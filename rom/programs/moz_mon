@@ -1,0 +1,502 @@
+------------
+-- Turtle Control Monitor
+------------
+
+---
+-- App
+---
+
+function moz.App:init()
+    rednet.open("top")
+
+    -- monitor
+    self.turtles = {}
+    self.current_turtle = nil
+    self.id = os.computerID()
+    self.coords = moz.utils.gps.getCoords()
+
+    -- app
+    self.width = 45
+    self.height = 15
+    self.header = moz.Panel.new("header", 1, 1, 51, 1)
+    self.header:add_line("Turtle Control Center v0.3")
+    self.logpan = moz.Panel.new("log", 1, 20 - 2, 51, 2)
+
+    -- home
+    home = moz.Screen.new("home")
+    home:add_panel(self.header)
+    home:add_panel(self.logpan)
+    home:add_panel(HomeMenu.new(self))
+    home.stdfocus = "menu"
+    self:add_screen(home)
+
+    -- turtle menu
+    turtle_menu = moz.Screen.new("turtle_menu")
+    turtle_menu:add_panel(self.header)
+    turtle_menu:add_panel(self.logpan)
+    turtle_menu:add_panel(TurtleMenu.new(self))
+    turtle_menu.stdfocus = "menu"
+    turtle_menu.back_screen = "home"
+    self:add_screen(turtle_menu)
+
+    -- status
+    turtle_status = moz.Screen.new("turtle_info")
+    turtle_status:add_panel(self.header)
+    turtle_status:add_panel(self.logpan)
+    turtle_status:add_panel(InfoPanel.new(self))
+    turtle_status:add_panel(MiniInventoryPanel.new(self))
+    turtle_status:add_panel(StatusMapPanel.new(self))
+    turtle_status.stdfocus = "map"
+    turtle_status.back_screen = "turtle_menu"
+    self:add_screen(turtle_status)
+
+    -- manual
+    turtle_manual = moz.Screen.new("turtle_manual")
+    turtle_manual:add_panel(self.header)
+    turtle_manual:add_panel(self.logpan)
+    turtle_manual:add_panel(ManualStatusPanel.new(self))
+    turtle_manual:add_panel(MiniInventoryPanel.new(self))
+    turtle_manual:add_panel(ManualMapPanel.new(self))
+    turtle_manual:add_panel(ManualLegendPanel.new(self))
+    turtle_manual.stdfocus = "map"
+    turtle_manual.back_screen = "turtle_menu"
+    self:add_screen(turtle_manual)
+
+    -- manual
+    turtle_inventory = moz.Screen.new("turtle_inventory")
+    turtle_inventory:add_panel(self.header)
+    turtle_inventory:add_panel(self.logpan)
+    turtle_inventory:add_panel(InventoryPanel.new(self))
+    turtle_inventory.stdfocus = "inventory"
+    turtle_inventory.back_screen = "turtle_menu"
+    self:add_screen(turtle_inventory)
+	
+
+    self:home()
+    self:announce()
+    self:listen()
+end
+
+function moz.App:quit()
+    self.continue = false
+    self.current_screen:clear()
+    rednet.close("top")
+end
+
+-- go to home screen
+function moz.App:home()
+    self:display("home")
+end
+
+-- go to turtle home screen
+function moz.App:turtle_menu(turtle)
+    self.current_turtle = turtle.id
+    self:display("turtle_menu")
+    
+end
+
+-- go to turtle status screen
+function moz.App:turtle_info()
+    self:display("turtle_info")
+end
+
+-- go to turtle manual screen
+function moz.App:turtle_manual()
+    self:display("turtle_manual")
+end
+
+-- go to turtle inventory screen
+function moz.App:turtle_inventory()
+    self:display("turtle_inventory")
+end
+
+-- app_utils
+
+function moz.App:log(message)
+    x, y = term.getCursorPos()
+    self.current_screen.panels["log"]:printl("[LOG]" .. message)
+    term.setCursorPos(x, y)
+end
+
+-- app actions
+
+function moz.App:announce()
+    message = self:rednet_message()
+    message.method = "turtle_register"
+    moz.utils.rednet.broadcastMessage(message)
+    self.turtles = {}
+    self:log("Announce...")
+end
+
+-- turtle
+
+function moz.App:turtle_register(message)
+    self.turtles[message.sender] = message.status
+    self:log("New turtle registered: " .. message.sender)
+
+    response = self:rednet_message()
+    response.target = message.sender
+    response.method = "monitor_register"
+    response.monitor = {}
+    response.monitor.id = self.id
+    response.monitor.coords = self.coords
+    moz.utils.rednet.sendMessage(response)
+
+    if self.current_screen.name == "home" then
+	self.current_screen.panels["menu"]:render()
+	self.current_screen.panels["menu"]:focus()
+    end
+end
+
+function moz.App:turtle_action(turtle, action)
+    message = self:rednet_message()
+    message.target = turtle.id
+    message.method = "action_request"
+    message.move = action
+    moz.utils.rednet.sendMessage(message)
+    self:log("Sent action '".. action .."' to turtle " .. turtle.id)
+end
+
+function moz.App:turtle_status(message)
+    self.turtles[message.sender] = message.status
+    self:log("Received status from turtle " .. message.sender)
+
+    if self.current_screen.name == "turtle_info" then
+	self.screens["turtle_info"].panels["status"]:render()
+	self.screens["turtle_info"].panels["inventory"]:render()
+	self.screens["turtle_info"].panels["map"]:render()
+    elseif self.current_screen.name == "turtle_manual" then
+	self.screens["turtle_manual"].panels["status"]:render()
+	self.screens["turtle_manual"].panels["inventory"]:render()
+	self.screens["turtle_manual"].panels["map"]:render()
+	self.screens["turtle_manual"].panels["legend"]:render()
+    end
+
+    if not message.status.last_action_result then
+	self:log("turtle '" .. message.status.name .. "' last action '" .. message.status.last_action .. "' FAILED")
+    end
+end
+
+---
+-- screens
+---
+
+-- Home
+
+HomeMenu = {}
+HomeMenu.__index = HomeMenu
+
+function HomeMenu.new(app)
+    local super = moz.Menu.new("menu", 1, 3, 30, 14, "Select turtle to control:")
+    local self = moz.utils.obj.new(HomeMenu, super)
+    self.app = app
+    return self
+end
+
+function HomeMenu:refresh()
+    self:clear()
+    self.items = {}
+    for id, turtle in pairs(self.app.turtles) do
+	self:add_item(turtle.name .. " (" .. turtle.id .. ")", "turtle_menu", turtle)
+    end
+    self:add_item("Refresh list", "announce", {})
+    self:add_item("Quit", "quit", {})
+end
+
+
+
+-- Turtle Menu
+
+TurtleMenu = {}
+TurtleMenu.__index = TurtleMenu
+
+function TurtleMenu.new(app)
+    local super = moz.Menu.new("menu", 1, 3, 30, 14, "Action to do:")
+    local self = moz.utils.obj.new(TurtleMenu, super)
+    self.app = app
+    return self
+end
+
+function TurtleMenu:refresh()
+    local turtle = self.app.turtles[self.app.current_turtle]
+    self.title = "Turtle ".. turtle.name .." (".. turtle.id ..") - task: " .. turtle.task
+    self.items = {}
+    self:add_item("Status", "turtle_info")
+    self:add_item("Manual Control", "turtle_manual")
+    self:add_item("Manage Inventory", "turtle_inventory")
+    self:add_item("Programs", "turtle_programs")
+    self:add_item("Stop", "turtle_stop")
+    self:add_item("Reboot", "turtle_reboot")
+    self:add_item("Back", "back", {})
+end
+
+-- Turtle Status
+
+-- Panel info
+InfoPanel = {}
+InfoPanel.__index = InfoPanel
+
+function InfoPanel.new(app)
+    local super = moz.Panel.new("status", 1, 3, 11, 8)
+    local self = moz.utils.obj.new(InfoPanel, super)
+    self.app = app
+    return self
+end
+
+function InfoPanel:refresh()
+    local turtle = self.app.turtles[self.app.current_turtle]
+    self.lines = {}
+    self:add_line("> " .. turtle.name)
+    self:add_line(turtle.task)
+    self:add_line("")
+    self:add_line("Coords:")
+    self:add_line("x: " .. turtle.coords.x)
+    self:add_line("y: " .. turtle.coords.y)
+    self:add_line("z: " .. turtle.coords.z)
+    self:add_line("d: " .. moz.utils.gps.get_distance(self.app.coords, turtle.coords))
+end
+
+-- Panel mini inventory
+MiniInventoryPanel = {}
+MiniInventoryPanel.__index = MiniInventoryPanel
+
+function MiniInventoryPanel.new(app)
+    local super = moz.Panel.new("inventory", 1, 12, 11, 5)
+    local self = moz.utils.obj.new(MiniInventoryPanel, super)
+    self.app = app
+    return self
+end
+
+function MiniInventoryPanel:refresh()
+    local turtle = self.app.turtles[self.app.current_turtle]
+    self.lines = {}
+    self.lines[1] = "Inventory:"
+    x = 1
+    for i = 2, 5 do
+	line = ""
+	for j = 1, 4 do
+	    if turtle.inventory[x] < 10 then
+		line = line .. " "
+	    end
+	    line = line .. turtle.inventory[x] .. " "
+	    x = x + 1
+	end
+	self.lines[i] = line
+    end
+end
+
+-- Panel map
+StatusMapPanel = {}
+StatusMapPanel.__index = StatusMapPanel
+
+function StatusMapPanel.new(app)
+    local super = moz.Panel.new("map", 13, 3, 39, 14)
+    local self = moz.utils.obj.new(StatusMapPanel, super)
+    self.app = app
+    self.viewer = moz.MapViewer.new(39, 13)
+    return self
+end
+
+function StatusMapPanel:refresh()
+    local turtle = self.app.turtles[self.app.current_turtle]
+    self.lines = self.viewer:to_lines(turtle.map, turtle.coords.x, turtle.coords.y, turtle.coords.z)
+end
+
+function StatusMapPanel:focus()
+    term.setCursorBlink(false)
+end
+
+-- Turtle manual
+
+-- status map
+ManualStatusPanel = {}
+ManualStatusPanel.__index = ManualStatusPanel
+
+function ManualStatusPanel.new(app)
+    local super = moz.Panel.new("status", 13, 3, 39, 1)
+    local self = moz.utils.obj.new(ManualStatusPanel, super)
+    self.app = app
+    return self
+end
+
+function ManualStatusPanel:refresh()
+    local turtle = self.app.turtles[self.app.current_turtle]
+    self:add_line("x: " .. turtle.coords.x .. " y: " .. turtle.coords.y .. " z: " .. turtle.coords.z)
+end
+
+-- Manual map
+ManualMapPanel = {}
+ManualMapPanel.__index = ManualMapPanel
+
+function ManualMapPanel.new(app)
+    local super = moz.Panel.new("map", 13, 4, 39, 13)
+    local self = moz.utils.obj.new(ManualMapPanel, super)
+    self.app = app
+    self.viewer = moz.MapViewer.new(39, 13)
+    return self
+end
+
+function ManualMapPanel:refresh()
+    local turtle = self.app.turtles[self.app.current_turtle]
+    self.lines = self.viewer:to_lines(turtle.map, turtle.coords.x, turtle.coords.y, turtle.coords.z)
+end
+
+function ManualMapPanel:focus()
+    term.setCursorBlink(false)
+end
+
+function ManualMapPanel:handle_key_event(key)
+    local turtle = self.app.turtles[self.app.current_turtle]
+    local action = nil
+
+    if key == 200 then -- uparrow
+	action = "forward" 
+    elseif key == 208 then  -- downarrow
+	action = "back"
+    elseif key == 203 then  -- leftarrow
+	action = "turnLeft"
+    elseif key == 205 then  -- rightarrow
+	action = "turnRight"
+    elseif key == 201 then --pgup
+	action = "up"
+    elseif key == 209 then --pgdown
+	action = "down"
+    elseif key == 57 then -- space
+	action = "dig"
+    elseif key == 199 then -- linestart
+	action = "digUp"
+    elseif key == 207 then -- lineend
+	action = "digDown"
+    elseif key == 28 then -- lineend
+	action = "attack"
+    elseif key == 45 then -- x
+	app:focus("menu")
+    end
+
+    if action ~= nil then 
+	self.app:turtle_action(turtle, action)
+    end
+end
+
+-- map legend
+ManualLegendPanel = {}
+ManualLegendPanel.__index = ManualLegendPanel
+
+function ManualLegendPanel.new(app)
+    local super = moz.Panel.new("legend", 1, 3, 11, 8)
+    local self = moz.utils.obj.new(ManualLegendPanel, super)
+    self.app = app
+    return self
+end
+
+function ManualLegendPanel:refresh()
+    local turtle = self.app.turtles[self.app.current_turtle]
+    self.lines = {}
+    self:add_line(turtle.name .. " (" .. turtle.id .. ")")
+    self:add_line("")
+    for i, wp in pairs(turtle.map.waypoints) do
+	self:add_line(wp.id .. ": " .. math.floor(moz.utils.gps.get_distance(wp, turtle.coords)) .. "m")
+    end
+end
+
+-- Inventory panel
+
+InventoryPanel = {}
+InventoryPanel.__index = InventoryPanel
+
+function InventoryPanel.new(app)
+   local super = moz.Menu.new("inventory", 1, 3, 15, 15, "Inventory:")
+   local self = moz.utils.obj.new(InventoryPanel, super)
+   self.app = app
+   return self
+end
+
+function InventoryPanel:refresh()
+    local turtle = self.app.turtles[self.app.current_turtle]
+    self.items = {}
+    for x = 1, 16 do
+	val = turtle.inventory[x]
+	if val < 10 then val = "0"..val end
+	item = {}
+	item.label = val
+	item.method = "inventory_action"
+	item.params = {}
+	self.items[#self.items + 1] = item
+    end
+end
+
+function InventoryPanel:render()
+    --if not self.visible then return end
+    self:refresh()
+    term.setCursorPos(self.x, self.y)
+    term.write(self.title)
+    term.setCursorPos(self.x, self.y + 2)
+    
+    k = 1
+    for i = 1, 4 do
+	for j = 1, 4 do
+	    item = self.items[k]
+
+	    x, y = term.getCursorPos()
+	    term.setCursorPos(x + 1, y)
+	    term.write(item.label)
+	    self.app:log(item.label)
+	    x, y = term.getCursorPos()
+	    term.setCursorPos(x + 1, y)
+	end
+	x, y = term.getCursorPos()
+	term.setCursorPos(self.x, y + 1)
+    end
+end
+
+function InventoryPanel:focus()
+    term.setCursorPos(self.x, self.y + 2)
+    term.write(">")
+    term.setCursorPos(self.x + 3, self.y + 2)
+    term.write("<")
+    term.setCursorPos(self.x, self.y + 2)
+    term.setCursorBlink(false)
+end
+
+function InventoryPanel:handle_key_event(key)
+    xmin = self.x
+    ymin = self.y + 2
+    xmax = xmin + 3 * 4 + 1 
+    ymax = ymin + 1 * 4
+
+    x, y = term.getCursorPos()
+    term.write(">")
+    term.setCursorPos(x + 3, y)
+    term.write("<")
+    term.setCursorPos(x, y)
+    
+    if key == 200 then -- arrow up
+	x, y = term.getCursorPos()
+	y = y - 1
+	if y >= ymin then term.setCursorPos(x, y) end
+    elseif key == 208 then -- arrow down
+	x, y = term.getCursorPos()
+	y = y + 1
+	if y < ymax then term.setCursorPos(x, y) end
+    elseif key == 203 then  -- leftarrow
+	x, y = term.getCursorPos()
+	x = x - 4
+	if x >= xmin then term.setCursorPos(x, y) end
+	elseif key == 205 then  -- rightarrow
+	x, y = term.getCursorPos()
+	x = x + 4
+	if x < xmax then term.setCursorPos(x, y) end
+    elseif key == 28 then -- enter
+	x, y = term.getCursorPos()
+	xstart = self.x
+	--ystart = ymin
+	--action = self.items[y - ystart + 1].action
+	--params = self.items[y - ystart + 1].params
+	--utils.obj.call(self.screen.app, action, params)
+    elseif key == 45 then -- x
+	--self.screen.app:focus("menu")
+    end
+end
+
+app = moz.App.new()
+app:init()

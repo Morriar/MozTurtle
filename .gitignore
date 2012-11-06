@@ -1,0 +1,14 @@
+# only moz files
+bios.lua
+/rom/apis/*
+!/rom/apis/moz*
+/rom/help/
+/rom/programs/computer/*
+!/rom/programs/computer/moz*
+/rom/programs/turtle/*
+!/rom/programs/turtle/moz*
+/rom/programs/*
+!/rom/programs/moz*
+!/rom/programs/computer*
+!/rom/programs/turtle*
+/rom/startup

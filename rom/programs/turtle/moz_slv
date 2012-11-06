@@ -1,0 +1,1196 @@
+------------
+-- Turtle 
+------------
+
+Turtle = {}
+Turtle.__index = Turtle
+
+function Turtle.new(name, facing)
+    rednet.open("right")
+    
+    local self = moz.utils.obj.new(Turtle)
+    -- turtle
+    self.namespace = "moznet"
+    self.continue = true
+    self.name = name
+    self.id = os.computerID()
+    self.monitors = {}
+    self.coords = moz.utils.gps.getCoords()
+    self.facing = facing
+    self.map = moz.Map.new()
+    self.map_file = "moz_ttl_map"
+    self.last_action = "none"
+    self.last_action_result = true
+    self.last_task = "idle"
+    self.last_task_args = nil
+    self.last_task_action_count = 0
+    self.timers = {}
+    self.config_file = "moz_ttl"
+    self.inventory = self:get_inventory()
+    self.interval = 1/5
+    self.action_queue = moz.LinkedList.new()
+    self.listen_timer = nil
+    self.paused = false
+
+    -- refresh_map
+    local node = self.map:get_node(self.coords.x, self.coords.y, self.coords.z)
+    if self.facing == "N" then node.symbol = "^" end
+    if self.facing == "E" then node.symbol = ">" end
+    if self.facing == "S" then node.symbol = "v" end
+    if self.facing == "W" then node.symbol = "<" end
+    if self.facing == "W" then node.symbol = "<" end
+    node.state = moz.MapNode.states.EMPTY
+    self.map:set_node(node)
+
+    -- ui
+    self.ui = TurtleUI.new(self)
+    
+    return self
+end
+
+function Turtle:stop()
+    self.action_queue:clear()
+    self.last_task = "idle"
+    self.last_task_params = {}
+    self.ui:refresh()
+end
+
+function Turtle:pause()
+    self.paused = true
+end
+
+function Turtle:resume()
+    self.paused = false
+end
+
+function Turtle:shutdown()
+    self.continue = false
+    self.ui:clear()
+    --os.shutdown()
+end
+
+function Turtle:reboot()
+    os.reboot()
+end
+
+---
+-- event handling
+---
+
+function Turtle:listen()
+    self.listen_timer = os.startTimer(self.interval)
+    local i = 0
+    while(self.continue) do
+        i = i + 1
+        event, p1, p2, p3 = os.pullEvent()
+        if event == "timer" and p1 == self.listen_timer then
+            self:action_queue_do_step()
+            self.listen_timer = os.startTimer(self.interval)
+        else
+            if self:event_handlers()[event] ~= nil then self:event_handlers()[event](p1, p2, p3) end
+        end
+    end
+end
+
+function Turtle:action_queue_do_step()
+    --self:log("INFO", "in do step is empty: " .. tostring(self.action_queue:is_empty()))
+    if not self.action_queue:is_empty() then
+        if self.posed then
+            return
+        else
+            local action = self.action_queue:pop_first()
+            local res = nil
+            if action.action ~= "marker" then
+                res = moz.utils.obj.call(self, action.action, action.params)
+            end
+            if action.callback ~= nil then
+                moz.utils.obj.call(self, action.callback, res)
+            end
+        end
+    end
+end
+
+function Turtle:action_queue_step(action, params, callback)
+    local act = {}
+    act.action = action
+    act.params = params
+    act.callback = callback
+    return act
+end
+
+-- event handlers
+function Turtle:event_handlers()
+    handlers = {}
+
+    handlers["key"] = function(key)
+        self:event_key_handler(key)
+    end
+
+    handlers["rednet_message"] = function(sender, message, distance)
+        self:event_rednet_handler(sender, message, distance)
+    end
+
+    handlers["timer"] = function(id)
+        self:event_timer_handler(id)
+    end
+
+    return handlers
+end
+
+-- handle key event
+function Turtle:event_key_handler(key)
+    if key == keys.q then
+        self.action_queue:prepend(self:action_queue_step("shutdown", {}))
+    elseif key == keys.p then
+        self:pause()
+    elseif key == keys.r then
+        self:resume()
+    elseif key == keys.s then
+        self:stop()
+    else
+        self.ui:handle_key_event(key)
+    end
+end
+
+-- handle rednet event
+function Turtle:event_rednet_handler(sender, serialized_message, distance)
+    message = textutils.unserialize(serialized_message)
+    if message == nil or message.namespace == nil or message.namespace ~= self.namespace then return end
+    message.sender = sender
+    message.distance = distance
+    moz.utils.obj.call(self, message.method, message)
+end
+
+-- handle timer event
+function Turtle:event_timer_handler(id)
+    if moz.utils.tables.has(self.timers, id) then 
+        moz.utils.obj.call(self, self.last_task, self.last_task_args)
+    end
+end
+
+---
+-- file handling
+---
+
+function Turtle.new_from_file(file)
+    if file ~= nil and moz.utils.files.file_exists(file) then
+        local config = textutils.unserialize(moz.utils.files.read(file))
+        local turtle = Turtle.new(config.name, config.last_facing)
+        turtle.name = config.name
+        if turtle.coords == nil then
+            turtle.coords = config.last_coords
+        end
+        if moz.utils.files.file_exists(config.map_file) then
+            turtle.map = moz.Map.new_from_file(config.map_file)
+        end
+        return turtle
+    end
+    print("Error: turtle config file no found")
+    return nil
+end
+
+function Turtle:save()
+    local save = {}
+    save.name = self.name
+    save.last_coords = self.coords
+    save.last_facing = self.facing
+    save.map_file = self.map_file
+    
+    -- save map
+    self.map:save(self.map_file)
+
+    -- save config
+    moz.utils.files.write(self.config_file, textutils.serialize(save))
+end
+
+---
+-- status
+---
+
+function Turtle:status()
+    local status = {}
+    status.id = self.id
+    status.name = self.name
+    status.monitors = self.monitors
+    status.inventory = self:get_inventory()
+    status.coords = self.coords
+    status.facing = self.facing
+    status.map = self.map
+    status.last_action = self.last_action
+    status.last_action_result = self.last_action_result
+    status.task = self.last_task
+    return status
+end
+
+function Turtle:get_inventory()
+    local inv = {}
+    for i = 1, 16 do
+        inv[i] = turtle.getItemCount(i)
+    end
+    return inv
+end
+
+---
+-- actions & navigation
+---
+
+function Turtle:action(action)
+    if turtle[action] ~= nil then
+        res = turtle[action]()
+
+        -- update last action
+        self.last_action = action
+        self.last_action_result = res
+        
+         -- refresh coords
+        self.old_coords = self.coords
+        self.coords = moz.utils.gps.getCoords()
+        self:detect_new_facing(action)
+
+        -- refresh_map
+        local node = self.map:get_node(self.coords.x, self.coords.y, self.coords.z)
+        if self.facing == "N" then node.symbol = "^" end
+        if self.facing == "E" then node.symbol = ">" end
+        if self.facing == "S" then node.symbol = "v" end
+        if self.facing == "W" then node.symbol = "<" end
+        if self.facing == "W" then node.symbol = "<" end
+        node.state = moz.MapNode.states.EMPTY
+        self.map:set_node(node)
+        
+        if res and (action == "forward" or action == "back") then
+            local node = self.map:get_node(self.old_coords.x, self.old_coords.y, self.old_coords.z)
+            node.symbol = "."
+            node.state = moz.MapNode.states.EMPTY
+            self.map:set_node(node)
+        end
+
+        -- detect if a block is front of the turtle
+        local x = self.coords.x
+        local y = self.coords.y
+        local z = self.coords.z
+        
+        if self.facing == "S" then z = z + 1 end
+        if self.facing == "N" then z = z - 1 end
+        if self.facing == "E" then x = x + 1 end
+        if self.facing == "W" then x = x - 1 end
+
+        local node = self.map:get_node(x, y, z)
+        if turtle.detect() then
+            node.symbol = "X"
+            node.state = moz.MapNode.states.BLOCK
+        else
+            node.symbol = " "
+            node.state = moz.MapNode.states.EMPTY
+        end
+        self.map:set_node(node)
+
+        node = self.map:get_node(self.coords.x, self.coords.y + 1, self.coords.z)
+        if turtle.detectUp() then
+            node.symbol = "X"
+            node.state = moz.MapNode.states.BLOCK
+        else
+            node.symbol = " "
+            node.state = moz.MapNode.states.EMPTY
+        end
+        self.map:set_node(node)
+        
+        local node = self.map:get_node(self.coords.x, self.coords.y - 1, self.coords.z)
+        if turtle.detectDown() then
+            node.symbol = "X"
+            node.state = moz.MapNode.states.BLOCK
+        else
+            node.symbol = " "
+            node.state = moz.MapNode.states.EMPTY
+        end
+        self.map:set_node(node)
+
+        self:save()
+        return res
+    end
+    return false
+end
+
+function Turtle:repeat_action(action, rep)
+    for i = 1, rep do
+		if not self:action(action) then
+		    return false
+	    end
+	end
+	return true
+end
+
+function Turtle:detect_new_facing(move)
+    if move == "forward" then
+        if self.coords.x > self.old_coords.x then self.facing = "E" return end
+        if self.coords.x < self.old_coords.x then self.facing = "W" return end
+        if self.coords.z > self.old_coords.z then self.facing = "S" return end
+        if self.coords.z < self.old_coords.z then self.facing = "N" return end
+    end
+    if move == "back" then
+        if self.coords.x < self.old_coords.x then self.facing = "E" return end
+        if self.coords.x > self.old_coords.x then self.facing = "W" return end
+        if self.coords.z < self.old_coords.z then self.facing = "S" return end
+        if self.coords.z > self.old_coords.z then self.facing = "N" return end
+    end
+    if move == "turnRight" then
+        if self.facing == "E" then self.facing = "S" return end
+        if self.facing == "S" then self.facing = "W" return end
+        if self.facing == "W" then self.facing = "N" return end
+        if self.facing == "N" then self.facing = "E" return end
+    end
+    if move == "turnLeft" then
+        if self.facing == "E" then self.facing = "N" return end
+        if self.facing == "N" then self.facing = "W" return end
+        if self.facing == "W" then self.facing = "S" return end
+        if self.facing == "S" then self.facing = "E" return end
+    end
+end
+
+function Turtle:move_to(neighbor)
+    if neighbor.x > self.coords.x then
+        if self.facing == "E" then
+        elseif self.facing == "N" then self:repeat_action("turnRight", 1)
+        elseif self.facing == "W" then self:repeat_action("turnRight", 2)
+        elseif self.facing == "S" then self:repeat_action("turnLeft", 1) end
+        self:action("forward")
+    elseif neighbor.x < self.coords.x then
+        if self.facing == "W" then
+        elseif self.facing == "N" then self:repeat_action("turnLeft", 1)
+        elseif self.facing == "E" then self:repeat_action("turnLeft", 2)
+        elseif self.facing == "S" then self:repeat_action("turnRight", 1) end
+        self:action("forward")
+    elseif neighbor.z < self.coords.z then
+        if self.facing == "N" then
+        elseif self.facing == "W" then self:repeat_action("turnRight", 1)
+        elseif self.facing == "S" then self:repeat_action("turnRight", 2)
+        elseif self.facing == "E" then self:repeat_action("turnLeft", 1) end
+        self:action("forward")
+    elseif neighbor.z > self.coords.z then
+        if self.facing == "S" then
+        elseif self.facing == "W" then self:repeat_action("turnLeft", 1)
+        elseif self.facing == "N" then self:repeat_action("turnLeft", 2)
+        elseif self.facing == "E" then self:repeat_action("turnRight", 1) end
+        self:action("forward")
+    elseif neighbor.y > self.coords.y then
+        self:action("up")
+    elseif neighbor.y < self.coords.y then
+        self:action("down")
+    end
+    if self.coords.x == neighbor.x and self.coords.y == neighbor.y and self.coords.z == neighbor.z then
+        return true
+    else
+        return false
+    end
+end
+
+function Turtle:follow_path(path)
+    for i = 2, #path do
+        if not self:move_to(path[i]) then return false end
+    end
+    return true
+end
+
+function Turtle:goto(node)
+    local start = self.map:get_node(self.coords.x, self.coords.y, self.coords.z)
+    start.symbol = " "
+    start.state = moz.MapNode.states.EMPTY
+    path = self.map:get_path(start, node)
+    if path == nil then
+        self:log("ERROR", "No path found to destination")
+        return false
+    else
+        followed = self:follow_path(path)
+        if not followed then
+            if node.state == moz.MapNode.states.BLOCK then
+                self:log("ERROR", "Destination is not empty")
+                return false
+            end
+            return self:goto(node)
+        end
+        if self.coords.x ~= node.x or self.coords.y ~= node.y or self.coords.z ~= node.z then
+            self:log("ERROR", "Not at destination but path is over")
+            return false
+        end
+        return true
+    end
+end
+
+function Turtle:goto_run(coords)
+    local start = self.map:get_node(self.coords.x, self.coords.y, self.coords.z)
+    local node = self.map:get_node(coords.x, coords.y, coords.z)
+    start.symbol = " "
+    start.state = moz.MapNode.states.EMPTY
+    path = self.map:get_path(start, node)
+    if path == nil then
+        self:log("ERROR", "No path found to destination")
+    else
+        self.last_task = "moving"
+        self.last_task_params = coords
+        for i = 2, #path do
+            self.action_queue:append(self:action_queue_step("move_to", path[i], "goto_step"))
+        end
+        self.action_queue:append(self:action_queue_step("marker", path[i], "goto_end"))
+    end
+    self.ui:refresh()
+end
+
+function Turtle:goto_step(result)
+    if not result then
+        local node = self.map:get_node(self.last_task_params.x, self.last_task_params.y, self.last_task_params.z)
+        if node.state == moz.MapNode.states.BLOCK then
+            self:log("ERROR", "Destination is not empty")
+            self:stop()
+        else
+            self.action_queue:clear()
+            self:goto_run(self.last_task_params)
+        end
+    end
+    self.ui:refresh()
+end
+
+function Turtle:goto_end(result)
+    local node = self.map:get_node(self.last_task_params.x, self.last_task_params.y, self.last_task_params.z)
+    local current = self.map:get_node(self.coords.x, self.coords.y, self.coords.z)
+    if node ~= current then
+        self:log("ERROR", "Not at destination but path is over")
+        return false
+    end
+    self:stop()
+end
+
+---
+-- programs
+---
+
+function Turtle:navigate_to(coords)
+    self:log("INFO", "Navigating to: " .. coords.x .. "," .. coords.y .. "," .. coords.z)
+    self:goto_run(coords)
+end
+
+function Turtle:empty_inventory()
+    for slot = 1, 16 do
+        turtle.select(slot)
+        if turtle.getItemCount(slot) > 0 then
+            if not turtle.drop() then
+                return false
+            end
+        end
+    end
+    turtle.select(1)
+    return true
+end
+
+function Turtle:harvester(args)
+    self.last_task = "harvester"
+    self.last_task = args
+
+    local drop = args[1]
+    local refill = args[2]
+    local field = args[3]
+
+    -- go to drop and empty
+    if not self:goto(drop) then
+        self:log("ERROR", "Unable to find a path to drop point")
+        return false
+    end
+    if not self:empty_inventory() then
+        self:log("ERROR", "Drop inventory is full")
+        return false
+    end
+    -- go to refill and init
+    if not self:goto(refill) then
+        self:log("ERROR", "Unable to find a path to refill point")
+        return false
+    end
+    -- init (récupérer matériaux nécessaires à harvester: seeds)
+    if not turtle.suck() then
+        self:log("ERROR", "Refill inventory is empty")
+        return false
+    end
+
+    -- turtle is ready, go harvest now !
+    slots = {} -- build field slots list
+    for x = field[1].x, field[2].x do
+        for z = field[1].z, field[3].z do
+            if not self:goto(self.map:get_node(x, field[1].y + 1, z)) then
+                self:log("ERROR", "Unable to reach field")
+                return false
+            end
+            self:action("digDown") -- cut wheat
+            self:action("digDown") -- till dirt
+            turtle.select(1)
+            turtle.placeDown() -- plant seed
+        end
+    end
+
+    -- go to drop and empty
+    if not self:goto(drop) then
+        self:log("ERROR", "Unable to find a path to drop point")
+        return false
+    end
+    if not self:empty_inventory() then
+        self:log("ERROR", "Drop inventory is full")
+        return false
+    end
+    self.timers[#self.timers + 1] = os.startTimer(10)
+   return true
+end
+
+---
+-- utils
+---
+
+function Turtle:log(level, message)
+    self.ui:log("["..level.."]" .. message)
+	--print("["..level.."]" .. message)
+
+    for i, monitor in ipairs(self.monitors) do
+        message = self:prepare_message(monitor.id)
+        message.action = "turtle_status"
+        --self:send_message(message)
+    end
+    
+end
+
+---
+-- rednet
+---
+
+-- serialize and send a message over rednet
+function Turtle:send_message(message)
+    rednet.send(message.target, textutils.serialize(message))
+end
+
+-- serialize and broadcast a message over rednet
+function Turtle:broadcast_message(message)
+    rednet.broadcast(textutils.serialize(message))
+end
+
+function Turtle:prepare_message(target)
+    message = {}
+    message.target = target
+    message.namespace = self.namespace
+    message.sender = self.id
+    message.status = self:status()
+    return message
+end
+
+-- send status to monitors
+function Turtle:send_status()
+    for i, monitor in ipairs(self.monitors) do
+        message = self:prepare_message(monitor.id)
+        message.action = "turtle_status"
+        self:send_message(message)
+    end
+end
+
+-- broadcast itself
+function Turtle:announce()
+	message = self:prepare_message()
+    message.action = "turtle_register"
+    self:broadcast_message(message)
+    self:log("INFO", "Registration request sent")
+end
+
+-- registration request
+function Turtle:turtle_register(message)
+    self:log("INFO", "Registration request received from monitor " .. message.sender)
+    self:announce()
+end
+
+-- registration ack
+function Turtle:monitor_register(message)
+    self.monitors[message.monitor.id] = message.monitor
+    self.map:set_waypoint(message.monitor.coords.x, message.monitor.coords.y, message.monitor.coords.z, "M" .. message.monitor.id)
+    self:send_status()
+    self:log("INFO", "Registered to monitor " .. message.monitor.id)
+end
+
+-- action request
+function Turtle:action_request(message)
+    -- turtle do action
+    self:log("INFO", "Action '".. message.move .."' required by monitor " .. message.sender)
+    self:action(message.move)
+    self:send_status()
+end
+
+------------
+-- ui
+------------
+
+TurtleUI = {}
+TurtleUI.__index = TurtleUI
+
+function TurtleUI.new(turtle)
+    local super = moz.App.new()
+    local self = moz.utils.obj.new(TurtleUI, super)
+
+    -- app
+    self.turtle = turtle
+    self.width = 45
+    self.height = 15
+    self.header = Header.new(self)
+    self.logpan = moz.Panel.new("log", 1, 12, 39, 2)
+
+    -- home
+    home = moz.Screen.new("home")
+    home:add_panel(self.header)
+    home:add_panel(self.logpan)
+    home:add_panel(HomeMenu.new(self))
+    home.stdfocus = "menu"
+    self:add_screen(home)
+
+    -- status
+    status = moz.Screen.new("status")
+    status:add_panel(self.header)
+    status:add_panel(self.logpan)
+    status:add_panel(StatusMap.new(self))
+    --status:add_panel(StatusPanel.new(self))
+    status:add_panel(StatusMenu.new(self))
+    status.stdfocus = "menu"
+    status.back_screen = "home"
+    self:add_screen(status)
+
+    -- manual
+    manual = moz.Screen.new("manual")
+    manual:add_panel(self.header)
+    manual:add_panel(self.logpan)
+    manual:add_panel(ManualMap.new(self))
+    manual.stdfocus = "map"
+    manual.back_screen = "home"
+    self:add_screen(manual)
+
+    -- map
+    map = moz.Screen.new("map")
+    map:add_panel(self.header)
+    map:add_panel(self.logpan)
+    map:add_panel(MapMenu.new(self))
+    map:add_panel(StatusMap.new(self))
+    map.stdfocus = "menu"
+    map.back_screen = "home"
+    self:add_screen(map)
+
+    -- monitors
+    monitors = moz.Screen.new("monitors")
+    monitors:add_panel(self.header)
+    monitors:add_panel(self.logpan)
+    monitors:add_panel(MonitorsPanel.new(self))
+    monitors:add_panel(MonitorsMenu.new(self))
+    monitors:add_panel(StatusMap.new(self))
+    monitors.stdfocus = "menu"
+    monitors.back_screen = "home"
+    self:add_screen(monitors)
+
+    -- programs
+    programs = moz.Screen.new("programs")
+    programs:add_panel(self.header)
+    programs:add_panel(self.logpan)
+    programs:add_panel(ProgramsMenu.new(self))
+    programs.stdfocus = "menu"
+    programs.back_screen = "status"
+    self:add_screen(programs)
+
+    -- goto
+    goto = moz.Screen.new("goto")
+    goto:add_panel(self.header)
+    goto:add_panel(self.logpan)
+    goto:add_panel(GotoForm.new(self))
+    goto.stdfocus = "menu"
+    goto.back_screen = "programs"
+    self:add_screen(goto)
+
+    self:home()
+    
+    return self
+end
+
+function TurtleUI:log(message)
+    x, y = term.getCursorPos()
+    self.current_screen.panels["log"]:printl(message)
+    term.setCursorPos(x, y)
+end
+
+function TurtleUI:home()
+    self:display("home")
+end
+
+function TurtleUI:manual()
+    self:display("manual")
+end
+
+function TurtleUI:map()
+    self:display("map")
+end
+
+function TurtleUI:monitors()
+    self:display("monitors")
+end
+
+function TurtleUI:status()
+    self:display("status")
+end
+
+function TurtleUI:programs()
+    self:display("programs")
+end
+
+function TurtleUI:goto()
+    self:display("goto")
+end
+
+function TurtleUI:run_goto(form)
+    local coords = {}
+    coords.x = tonumber(form:get_field("x").value)
+    coords.y = tonumber(form:get_field("y").value)
+    coords.z = tonumber(form:get_field("z").value)
+    self:display("status")
+    self.turtle:navigate_to(coords)
+end
+
+function TurtleUI:clear()
+    self.current_screen:clear()
+end
+
+function TurtleUI:stop()
+    self.turtle:stop()
+end
+
+function TurtleUI:shutdown()
+    self.turtle:shutdown()
+end
+
+function TurtleUI:reboot()
+    self.turtle.reboot()
+end
+
+-- Header
+
+Header = {}
+Header.__index = Header
+
+function Header.new(app)
+    local super = moz.Panel.new("header", 1, 1, 39, 1)
+    local self = moz.utils.obj.new(Header, super)
+    self.app = app
+    return self
+end
+
+function Header:refresh()
+    local turtle = self.app.turtle
+    self.lines = {}
+    self:add_line(turtle.name .." (".. turtle.id ..") - " .. turtle.last_task .. " - x:" .. turtle.coords.x .. " y:" .. turtle.coords.y .. " z:" .. turtle.coords.z)
+end
+
+-- Home menu
+HomeMenu = {}
+HomeMenu.__index = HomeMenu
+
+function HomeMenu.new(app)
+    local super = moz.Menu.new("menu", 1, 3, 30, 9, "")
+    local self = moz.utils.obj.new(HomeMenu, super)
+    self.app = app
+    return self
+end
+
+function HomeMenu:refresh()
+    self.title = "Action:"
+    self.items = {}
+    self:add_item("Control", "status")
+    self:add_item("Map", "map")
+    self:add_item("Monitors", "monitors")
+    self:add_item("Log", "Log")
+    self:add_item("Quit", "shutdown")
+end
+
+-- Status map
+
+StatusMap = {}
+StatusMap.__index = StatusMap
+
+function StatusMap.new(app)
+    local super = moz.Panel.new("map", 23, 3, 17, 9)
+    local self = moz.utils.obj.new(StatusMap, super)
+    self.app = app
+    self.viewer = moz.MapViewer.new(17, 9)
+    return self
+end
+
+function StatusMap:refresh()
+    local turtle = self.app.turtle
+    self.lines = self.viewer:to_lines(turtle.map, turtle.coords.x, turtle.coords.y, turtle.coords.z)
+end
+
+-- Status panel
+
+StatusPanel = {}
+StatusPanel.__index = StatusPanel
+
+function StatusPanel.new(app)
+    local super = moz.Panel.new("panel", 1, 3, 21, 4)
+    local self = moz.utils.obj.new(StatusPanel, super)
+    self.app = app
+    return self
+end
+
+function StatusPanel:refresh()
+    local turtle = self.app.turtle
+    self.lines = {}
+    --for k, monitor in pairs(turtle.monitors) do
+      --  self:add_line("M" .. monitor.id .. ": " .. moz.utils.gps.get_distance(turtle.coords, monitor.coords) .. "m")
+    --end
+end
+
+-- Monitors panel
+
+MonitorsPanel = {}
+MonitorsPanel.__index = MonitorsPanel
+
+function MonitorsPanel.new(app)
+    local super = moz.Panel.new("panel", 1, 3, 21, 4)
+    local self = moz.utils.obj.new(MonitorsPanel, super)
+    self.app = app
+    return self
+end
+
+function MonitorsPanel:refresh()
+    local turtle = self.app.turtle
+    self.lines = {}
+    self:add_line("Monitors:")
+    self:add_line("")
+    for k, monitor in pairs(turtle.monitors) do
+      self:add_line("   M" .. monitor.id .. ": " .. moz.utils.gps.get_distance(turtle.coords, monitor.coords) .. "m")
+    end
+end
+
+-- Status menu
+
+StatusMenu = {}
+StatusMenu.__index = StatusMenu
+
+function StatusMenu.new(app)
+    local super = moz.Menu.new("menu", 1, 3, 21, 4, "")
+    local self = moz.utils.obj.new(StatusMenu, super)
+    self.app = app
+    self.title_margin = 1
+    return self
+end
+
+function StatusMenu:refresh()
+    self.title = "Task: <".. self.app.turtle.last_task ..">"
+    self.items = {}
+    if self.app.turtle.last_task == "idle" then
+        self:add_item("Manual", "manual")
+        self:add_item("Programs", "programs")
+        self:add_item("Reboot", "reboot")
+        self:add_item("Shutdown", "shutdown")
+    else
+        self:add_item("Stop", "stop")
+        if self.app.turtle.paused then
+            self:add_item("Resume", "resume")
+        else
+            self:add_item("Pause", "pause")
+        end
+    end
+    self:add_item("Back", "back")
+end
+
+-- Monitors menu
+
+MonitorsMenu = {}
+MonitorsMenu.__index = MonitorsMenu
+
+function MonitorsMenu.new(app)
+    local super = moz.Menu.new("menu", 1, 9, 21, 4, "")
+    local self = moz.utils.obj.new(MonitorsMenu, super)
+    self.app = app
+    self.title_margin = 0
+    return self
+end
+
+function MonitorsMenu:refresh()
+    self.title = ""
+    self.items = {}
+    self:add_item("Back", "back")
+end
+
+-- Manual Map
+
+ManualMap = {}
+ManualMap.__index = ManualMap
+
+function ManualMap.new(app)
+    local super = moz.Panel.new("map", 1, 3, 39, 9)
+    local self = moz.utils.obj.new(ManualMap, super)
+    self.app = app
+    self.viewer = moz.MapViewer.new(38, 8)
+    return self
+end
+
+function ManualMap:refresh()
+    local turtle = self.app.turtle
+    self.lines = self.viewer:to_lines(turtle.map, turtle.coords.x, turtle.coords.y, turtle.coords.z)
+end
+
+function ManualMap:focus()
+    term.setCursorBlink(false)
+end
+
+function ManualMap:handle_key_event(key)
+    local turtle = self.app.turtle
+    local action = nil
+
+    if key == keys.up then
+        action = "forward" 
+    elseif key == keys.down then
+        action = "back"
+    elseif key == keys.left then
+        action = "turnLeft"
+    elseif key == keys.right then
+        action = "turnRight"
+    elseif key == keys.pageUp then
+        action = "up"
+    elseif key == keys.pageDown then
+        action = "down"
+    elseif key == keys.space then
+        action = "dig"
+    elseif key == keys.leftAlt then
+        action = "digUp"
+    elseif key == keys.rightAlt then
+        action = "digDown"
+    elseif key == keys.enter then
+        action = "attack"
+    elseif key == keys.tab or key == keys.x then
+        self.app:back()
+    end
+
+    if action ~= nil then
+        self.app.turtle.action_queue:append(self.app.turtle:action_queue_step("action", action))
+    end
+end
+
+-- Map menu
+
+MapMenu = {}
+MapMenu.__index = MapMenu
+
+function MapMenu.new(app)
+    local super = moz.Menu.new("menu", 1, 3, 21, 4, "")
+    local self = moz.utils.obj.new(MapMenu, super)
+    self.app = app
+    self.title_margin = 1
+    return self
+end
+
+function MapMenu:refresh()
+    self.title = "Coords: ".. self.app.turtle.coords.x .. "," .. self.app.turtle.coords.y .. "," .. self.app.turtle.coords.z
+    self.items = {}
+    self:add_item("Explore", "map_explore")
+    self:add_item("Waypoints", "map_waypoints")
+    self:add_item("Clear", "map_clear")
+    self:add_item("Back", "back")
+end
+
+-- Programs menu
+
+ProgramsMenu = {}
+ProgramsMenu.__index = ProgramsMenu
+
+function ProgramsMenu.new(app)
+    local super = moz.Menu.new("menu", 1, 3, 30, 14, "")
+    local self = moz.utils.obj.new(ProgramsMenu, super)
+    self.app = app
+    return self
+end
+
+function ProgramsMenu:refresh()
+    self.title = "Programs:"
+    self.items = {}
+    self:add_item("Go To", "goto")
+    self:add_item("Harvester", "harvester")
+    self:add_item("Lumber", "lumber")
+    self:add_item("Miner", "miner")
+    self:add_item("Back", "back")
+end
+
+-- Goto menu
+GotoForm = {}
+GotoForm.__index = GotoForm
+
+function GotoForm.new(app)
+    local super = Form.new("menu", 1, 3, 30, 14, "")
+    local self = moz.utils.obj.new(GotoForm, super)
+    self.app = app
+
+    self.title = "Enter destination:"
+    self.fields = {}
+    self:add_field("x", "x:", self.app.turtle.coords.x)
+    self:add_field("y", "y:", self.app.turtle.coords.y)
+    self:add_field("z", "z:", self.app.turtle.coords.z)
+    self.actions = {}
+    self:add_action("Go", "run_goto", self)
+    self:add_action("Back", "back")
+    
+    return self
+end
+
+function GotoForm:refresh()
+end
+
+Form = {}
+Form.__index = Form
+
+function Form.new(name, x, y, width, height, title)
+   local super = moz.Panel.new(name, x, y, width, height)
+   local self = moz.utils.obj.new(Form, super)
+    
+    -- local attributes
+    self.title = title
+    self.fields = {}
+    self.actions = {}
+    self.title_margin = 1
+
+    return self
+end
+
+function Form:render()
+    if not self.visible then return end
+    self:refresh()
+    term.setCursorPos(self.x, self.y)
+    term.write(self.title)
+    term.setCursorPos(self.x, self.y + 1 + self.title_margin)
+    
+    for i, field in ipairs(self.fields) do
+        x, y = term.getCursorPos()
+        term.setCursorPos(x + 3, y)
+        term.write(field.label)
+        term.write(" ")
+        term.write(field.value)
+        term.setCursorPos(x, y + 1)
+    end
+    x, y = term.getCursorPos()
+    term.setCursorPos(x, y + 1)
+    for i, action in ipairs(self.actions) do
+        x, y = term.getCursorPos()
+        term.setCursorPos(x + 3, y)
+        term.write(action.label)
+        term.setCursorPos(x, y + 1)
+    end
+end
+
+function Form:add_field(name, label, default)
+    field = {}
+    field.name = name
+    field.label = label
+    field.value = default
+    self.fields[#self.fields + 1] = field
+end
+
+function Form:get_field(field_name)
+    for i, field in pairs(self.fields) do
+        if field.name == field_name then
+            return field
+        end
+    end
+    return nil
+end
+
+function Form:add_action(label, action, params)
+    act = {}
+    act.label = label
+    act.action = action
+    act.params = params
+    self.actions[#self.actions + 1] = act
+end
+
+function Form:focus()
+    term.setCursorBlink(false)
+    term.setCursorPos(self.x + 1, self.y + 1 + self.title_margin)
+    term.write(">")
+    term.setCursorPos(self.x + 1, self.y + 1 + self.title_margin)
+end
+
+function Form:handle_key_event(key)
+    local ymin = self.y + 1 + self.title_margin
+    local ymax = ymin + #self.fields + 1 + #self.actions
+
+    if key == keys.up then
+        x, y = term.getCursorPos()
+        y = y - 1
+        if y >= ymin then
+            self:clear_cursor()
+            term.setCursorPos(x, y)
+            term.write(">")
+            term.setCursorPos(x, y)
+        end
+    end
+    if key == keys.down then
+        x, y = term.getCursorPos()
+        y = y + 1
+        if y < ymax then
+            self:clear_cursor()
+            term.setCursorPos(x, y)
+            term.write(">")
+            term.setCursorPos(x, y)
+        end
+    end
+
+    if key == keys.enter then
+        local x, y = term.getCursorPos()
+
+        if y - ymin < #self.fields then
+            local field = self.fields[y - ymin + 1]
+            term.setCursorPos(x + field.label:len() + 3, y)
+            field.value = io.read()
+            self.app.turtle.listen_timer = os.startTimer(self.app.turtle.interval)
+            self:render()
+            term.setCursorPos(x, y)
+        elseif y - ymin + 1 > #self.fields + 1 then
+            local action = self.actions[y - ymin - 1 - #self.fields + 1]
+            moz.utils.obj.call(self.app, action.action, action.params)
+        end
+    end
+end
+
+function Form:clear_cursor()
+    local ymin = self.y + 1 + self.title_margin
+    local ymax = ymin + #self.fields + 1 + #self.actions
+    local oldX, oldY = term.getCursorPos()
+    for y = ymin, ymax do
+	term.setCursorPos(self.x + 1, y)
+	term.write(" ")
+    end
+    term.setCursorPos(oldX, oldY)
+end
+
+
+------------
+-- init
+------------
+
+local args = {...}
+
+-- create a new turtle
+local turtle = {}
+if moz.utils.files.file_exists("moz_ttl") then
+    turtle = Turtle.new_from_file("moz_ttl")
+else
+    turtle = Turtle.new("T1", args[1])
+    turtle:save()
+end
+turtle:announce()
+turtle:listen()
+
+-- Harvester test
+--local drop = turtle.map:get_node(-924, 6, 465)
+--local refill = turtle.map:get_node(-926, 6, 465)
+
+-- TODO revoir la facon de spécifier les points du champs
+--local field = {}
+--field[#field + 1] = turtle.map:get_node(-926, 7, 474)
+--field[#field + 1] = turtle.map:get_node(-921, 7, 474)
+--field[#field + 1] = turtle.map:get_node(-926, 7, 475)
+--field[#field + 1] = turtle.map:get_node(-921, 7, 475)
+
+--print(self.turtle:action("back"))
+--print(turtle:harvester({drop, refill, field}))
+
