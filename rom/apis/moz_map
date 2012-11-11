@@ -12,34 +12,23 @@ os.loadAPI("/rom/apis/moz_std")
 -- A 3D map with waypoints
 -----
 
-Map = {}
-Map.__index = Map
+Map = moz_core.obj.declare_class("Map")
 
-function Map.new()
-    local map = moz.utils.obj.new(Map)
-    map.points = {}
-    map.nodes = {}
-    map.waypoints = {}
-    return map
+function Map:init()
+    self.nodes = {}
+    self.waypoints = {}
 end
 
 function Map.new_from_file(file)
-    local map = Map.new()
-
+    local self = Map.new()
     local str = moz.utils.files.read(file)
     local obj = textutils.unserialize(str)
 
-    map.nodes = {}
-    for y, ylst in pairs(obj.nodes) do
-	for z, zlst in pairs(ylst) do
-	    for x, node in pairs(zlst) do
-		map:set_node(MapNode.new(node.x, node.y, node.z, node.symbol, node.walkable))
-	    end
-	end
+    for i, node in pairs(obj.nodes) do
+	self:set_node(MapNode.new(node.x, node.y, node.z, node.symbol, node.walkable))
     end
-    
-    map.waypoints = obj.waypoints
-    return map
+    self.waypoints = obj.waypoints
+    return self
 end
 
 function Map:set_node(node)
@@ -58,6 +47,18 @@ function Map:get_node(x, y, z)
 	return self:get_node(x, y, z)
     end
     return self.nodes[y][z][x]
+end
+
+function Map:get_nodes()
+    local nodes = {}
+    for y, ylst in pairs(self.nodes) do
+	for z, zlst in pairs(ylst) do
+	    for x, node in pairs(zlst) do
+		nodes[#nodes + 1] = self:get_node(x, y, z)
+	    end
+	end
+    end
+    return nodes
 end
 
 function Map:get_neighbors(node)
@@ -80,8 +81,18 @@ function Map:set_waypoint(x, y, z, id)
     self.waypoints[id] = waypoint
 end
 
+function Map:to_a()
+    local a = {}
+    a.nodes = {}
+    for i, node in pairs(self:get_nodes()) do
+	a.nodes[i] = node:to_a()
+    end
+    a.waypoints = self.waypoints
+    return a
+end
+
 function Map:save(file)
-    moz.utils.files.write(file, textutils.serialize(self))
+    moz.utils.files.write(file, textutils.serialize(self:to_a()))
 end
 
 -- A*
@@ -149,56 +160,53 @@ function Map:get_min_fcost(set)
     return min
 end
 
---
 -- MapNode
 -- elementary element of a Map
---
+MapNode = moz_core.obj.declare_class("MapNode")
+MapNode.states = {}
+MapNode.states.EMPTY = 0
+MapNode.states.UNKNOWN = 1
+MapNode.states.BLOCK = 2
 
-MapNode = {}
-MapNode.__index = MapNode
+function MapNode:init(x, y, z, symbol, state)
+    self.x = x
+    self.y = y
+    self.z = z
+    self.symbol = symbol
+    self.state = state
+end
 
-function MapNode.new(x, y, z, symbol, state)
-    local node = moz.utils.obj.new(MapNode)
-    node.x = x
-    node.y = y
-    node.z = z
-    node.symbol = symbol
-    node.state = state
-    return node
+function MapNode:to_a()
+    local a = {}
+    a.x = self.x
+    a.y = self.y
+    a.z = self.z
+    a.symbol = self.symbol
+    a.state = self.state
+    return a
 end
 
 function MapNode:to_s()
     return "(" .. self.x .. ", " .. self.y .. ", " .. self.z .. ")"
 end
 
-MapNode.states = {}
-MapNode.states.EMPTY = 0
-MapNode.states.UNKNOWN = 1
-MapNode.states.BLOCK = 2
-
------
 -- class MapViewer
---
 -- display a view of a map z layer
------
+MapViewer = moz_core.obj.declare_class("MapViewer")
 
-MapViewer = {}
-MapViewer.__index = MapViewer
-
-function MapViewer.new(width, height)
-    local self = moz.utils.obj.new(MapViewer)
+function MapViewer:init(map, width, height)
+    self.map = map
     self.width = width
     self.height = height
-    return self
 end
 
-function MapViewer:to_lines(map, origX, origY, origZ)
+function MapViewer:to_lines(origX, origY, origZ)
     local minX = origX - math.floor(self.width / 2)
     local maxX = origX + math.floor(self.width / 2)
     local minZ = origZ - math.floor(self.height / 2)
     local maxZ = origZ + math.floor(self.height / 2)
 
-    local view = self:view(map, origX, origY, origZ)
+    local view = self:view(origX, origY, origZ)
     local lines = {}
     i = 1
     for z = minZ, maxZ do
@@ -211,7 +219,7 @@ function MapViewer:to_lines(map, origX, origY, origZ)
     return lines
 end
 
-function MapViewer:view(map, origX, origY, origZ)
+function MapViewer:view(origX, origY, origZ)
 
     local minX = origX - math.floor(self.width / 2)
     local maxX = origX + math.floor(self.width / 2)
@@ -219,8 +227,8 @@ function MapViewer:view(map, origX, origY, origZ)
     local maxZ = origZ + math.floor(self.height / 2)
 
     -- build view
-    local lines = self:grid(map, minZ, maxZ, minX, maxX, origX, origY, origZ)
-    local layer = map.nodes[origY]
+    local lines = self:grid(minZ, maxZ, minX, maxX, origX, origY, origZ)
+    local layer = self.map.nodes[origY]
     
     for z = minZ + 1, maxZ - 1 do
 	for x = minX + 1, maxX - 1 do
@@ -232,7 +240,7 @@ function MapViewer:view(map, origX, origY, origZ)
 	end
     end
 
-    for id, waypoint in pairs(map.waypoints) do
+    for id, waypoint in pairs(self.map.waypoints) do
 	if waypoint.z >= minZ and waypoint.z <= maxZ then
 	    if waypoint.x >= minX and waypoint.x <= maxX then
 		lines[waypoint.z][waypoint.x] = string.sub(tostring(waypoint.id), 1, 1)
@@ -242,7 +250,7 @@ function MapViewer:view(map, origX, origY, origZ)
     return lines
 end
 
-function MapViewer:grid(map, minZ, maxZ, minX, maxX, origX, origY, origZ)
+function MapViewer:grid(minZ, maxZ, minX, maxX, origX, origY, origZ)
     local lines = {}
     for z = minZ, maxZ do
 	lines[z] = {}
@@ -279,7 +287,7 @@ function MapViewer:grid(map, minZ, maxZ, minX, maxX, origX, origY, origZ)
     a.x = origX
     a.z = origZ
     local b = {}
-    for id, waypoint in pairs(map.waypoints) do
+    for id, waypoint in pairs(self.map.waypoints) do
 	if waypoint.x < minX or waypoint.x > maxX or waypoint.z < minZ or waypoint.z > maxZ then
 	    b.x = waypoint.x
 	    b.z = waypoint.z
@@ -304,14 +312,14 @@ function MapViewer:grid(map, minZ, maxZ, minX, maxX, origX, origY, origZ)
     return lines
 end
 
-function MapViewer:get_legend(map, origX, origY, origZ)
+function MapViewer:get_legend(origX, origY, origZ)
     local lines = {}
     local orig = {}
     orig.x = origX
     orig.y = origY
     orig.z = origZ
     --lines[#lines + 1] = "orig x:" .. orig.x .. " y: " .. orig.y .. " z:" .. orig.z
-    for i, waypoint in pairs(map.waypoints) do
+    for i, waypoint in pairs(self.map.waypoints) do
 	line = id .. " x:" .. waypoint.x .. " y:" .. waypoint.y .. " z:" .. waypoint.z .. " d:" .. moz.utils.gps.get_distance(orig, waypoint)
 	lines[#lines + 1] = line
     end

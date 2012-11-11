@@ -239,9 +239,7 @@ function Turtle:status()
     status.inventory = self:get_inventory()
     status.coords = self.coords
     status.facing = self.facing
-    status.map = {}
-    status.map.nodes = self.map.nodes
-    status.map.waypoints = self.map.waypoints
+    status.map = self.map:to_a()
     status.last_action = self.last_action
     status.last_action_result = self.last_action_result
     status.task = self.last_task
@@ -794,12 +792,12 @@ StatusMap = moz_core.obj.declare_class("StatusMap", moz.app.Panel)
 function StatusMap:init(app)
     StatusMap.super.init(self, "map", 23, 3, 17, 9)
     self.app = app
-    self.viewer = moz.map.MapViewer.new(17, 9)
+    self.viewer = moz.map.MapViewer.new(self.app.turtle.map, 17, 9)
 end
 
 function StatusMap:refresh()
     local turtle = self.app.turtle
-    self.lines = self.viewer:to_lines(turtle.map, turtle.coords.x, turtle.coords.y, turtle.coords.z)
+    self.lines = self.viewer:to_lines(turtle.coords.x, turtle.coords.y, turtle.coords.z)
 end
 
 -- Status panel
@@ -890,12 +888,12 @@ ManualMap = moz_core.obj.declare_class("ManualMap", moz.app.Panel)
 function ManualMap:init(app)
     ManualMap.super.init(self, "map", 1, 3, 39, 9)
     self.app = app
-    self.viewer = moz.map.MapViewer.new(38, 8)
+    self.viewer = moz.map.MapViewer.new(self.app.turtle.map, 38, 8)
 end
 
 function ManualMap:refresh()
     local turtle = self.app.turtle
-    self.lines = self.viewer:to_lines(turtle.map, turtle.coords.x, turtle.coords.y, turtle.coords.z)
+    self.lines = self.viewer:to_lines(turtle.coords.x, turtle.coords.y, turtle.coords.z)
 end
 
 function ManualMap:focus()

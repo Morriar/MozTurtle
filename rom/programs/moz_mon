@@ -282,12 +282,13 @@ StatusMapPanel = moz_core.obj.declare_class("StatusMapPanel", moz.app.Panel)
 function StatusMapPanel:init(app)
     StatusMapPanel.super.init(self, "map", 13, 3, 39, 14)
     self.app = app
-    self.viewer = moz.map.MapViewer.new(39, 13)
+    self.viewer = moz.map.MapViewer.new(nil, 39, 13)
 end
 
 function StatusMapPanel:refresh()
     local turtle = self.app.turtles[self.app.current_turtle]
-    self.lines = self.viewer:to_lines(turtle.map, turtle.coords.x, turtle.coords.y, turtle.coords.z)
+    self.map = turtle.map
+    self.lines = self.viewer:to_lines(turtle.coords.x, turtle.coords.y, turtle.coords.z)
 end
 
 function StatusMapPanel:focus()
@@ -315,11 +316,12 @@ ManualMapPanel = moz_core.obj.declare_class("ManualMapPanel", moz.app.Panel)
 function ManualMapPanel:init(app)
     ManualMapPanel.super.init(self, "map", 13, 4, 39, 13)
     self.app = app
-    self.viewer = moz.map.MapViewer.new(39, 13)
+    self.viewer = moz.map.MapViewer.new(nil, 39, 13)
 end
 
 function ManualMapPanel:refresh()
     local turtle = self.app.turtles[self.app.current_turtle]
+    self.map = turtle.map
     self.lines = self.viewer:to_lines(turtle.map, turtle.coords.x, turtle.coords.y, turtle.coords.z)
 end
 
