@@ -6,7 +6,10 @@
 -- App
 ---
 
-function moz.app.App:init()
+Monitor = moz_core.obj.declare_class("Monitor", moz.app.App)
+
+function Monitor:init()
+    Monitor.super.init(self)
     rednet.open("top")
 
     -- monitor
@@ -77,42 +80,42 @@ function moz.app.App:init()
     self:listen()
 end
 
-function moz.app.App:quit()
+function Monitor:quit()
     self.continue = false
     self.current_screen:clear()
     rednet.close("top")
 end
 
 -- go to home screen
-function moz.app.App:home()
+function Monitor:home()
     self:display("home")
 end
 
 -- go to turtle home screen
-function moz.app.App:turtle_menu(turtle)
+function Monitor:turtle_menu(turtle)
     self.current_turtle = turtle.id
     self:display("turtle_menu")
     
 end
 
 -- go to turtle status screen
-function moz.app.App:turtle_info()
+function Monitor:turtle_info()
     self:display("turtle_info")
 end
 
 -- go to turtle manual screen
-function moz.app.App:turtle_manual()
+function Monitor:turtle_manual()
     self:display("turtle_manual")
 end
 
 -- go to turtle inventory screen
-function moz.app.App:turtle_inventory()
+function Monitor:turtle_inventory()
     self:display("turtle_inventory")
 end
 
 -- app_utils
 
-function moz.app.App:log(message)
+function Monitor:log(message)
     x, y = term.getCursorPos()
     self.current_screen.panels["log"]:printl("[LOG]" .. message)
     term.setCursorPos(x, y)
@@ -120,7 +123,7 @@ end
 
 -- app actions
 
-function moz.app.App:announce()
+function Monitor:announce()
     message = self:rednet_message()
     message.method = "turtle_register"
     moz.utils.rdnet.broadcastMessage(message)
@@ -130,7 +133,7 @@ end
 
 -- turtle
 
-function moz.app.App:turtle_register(message)
+function Monitor:turtle_register(message)
     self.turtles[message.sender] = message.status
     self:log("New turtle registered: " .. message.sender)
 
@@ -148,7 +151,7 @@ function moz.app.App:turtle_register(message)
     end
 end
 
-function moz.app.App:turtle_action(turtle, action)
+function Monitor:turtle_action(turtle, action)
     message = self:rednet_message()
     message.target = turtle.id
     message.method = "action_request"
@@ -157,7 +160,7 @@ function moz.app.App:turtle_action(turtle, action)
     self:log("Sent action '".. action .."' to turtle " .. turtle.id)
 end
 
-function moz.app.App:turtle_status(message)
+function Monitor:turtle_status(message)
     self.turtles[message.sender] = message.status
     self:log("Received status from turtle " .. message.sender)
 
@@ -183,14 +186,11 @@ end
 
 -- Home
 
-HomeMenu = {}
-HomeMenu.__index = HomeMenu
+HomeMenu = moz_core.obj.declare_class("HomeMenu", moz.app.Menu)
 
-function HomeMenu.new(app)
-    local super = moz.app.Menu.new("menu", 1, 3, 30, 14, "Select turtle to control:")
-    local self = moz.utils.obj.new(HomeMenu, super)
+function HomeMenu:init(app)
+    HomeMenu.super.init(self, "menu", 1, 3, 30, 14, "Select turtle to control:")
     self.app = app
-    return self
 end
 
 function HomeMenu:refresh()
@@ -207,14 +207,11 @@ end
 
 -- Turtle Menu
 
-TurtleMenu = {}
-TurtleMenu.__index = TurtleMenu
+TurtleMenu = moz_core.obj.declare_class("TurtleMenu", moz.app.Menu)
 
-function TurtleMenu.new(app)
-    local super = moz.app.Menu.new("menu", 1, 3, 30, 14, "Action to do:")
-    local self = moz.utils.obj.new(TurtleMenu, super)
+function TurtleMenu:init(app)
+    TurtleMenu.super.init(self, "menu", 1, 3, 30, 14, "Action to do:")
     self.app = app
-    return self
 end
 
 function TurtleMenu:refresh()
@@ -233,14 +230,11 @@ end
 -- Turtle Status
 
 -- Panel info
-InfoPanel = {}
-InfoPanel.__index = InfoPanel
+InfoPanel = moz_core.obj.declare_class("InfoPanel", moz.app.Panel)
 
-function InfoPanel.new(app)
-    local super = moz.app.Panel.new("status", 1, 3, 11, 8)
-    local self = moz.utils.obj.new(InfoPanel, super)
+function InfoPanel:init(app)
+    InfoPanel.super.init(self, "status", 1, 3, 11, 8)
     self.app = app
-    return self
 end
 
 function InfoPanel:refresh()
@@ -257,14 +251,11 @@ function InfoPanel:refresh()
 end
 
 -- Panel mini inventory
-MiniInventoryPanel = {}
-MiniInventoryPanel.__index = MiniInventoryPanel
+MiniInventoryPanel = moz_core.obj.declare_class("MiniInventoryPanel", moz.app.Panel)
 
-function MiniInventoryPanel.new(app)
-    local super = moz.app.Panel.new("inventory", 1, 12, 11, 5)
-    local self = moz.utils.obj.new(MiniInventoryPanel, super)
+function MiniInventoryPanel:init(app)
+    MiniInventoryPanel.super.init(self, "inventory", 1, 12, 11, 5)
     self.app = app
-    return self
 end
 
 function MiniInventoryPanel:refresh()
@@ -286,15 +277,12 @@ function MiniInventoryPanel:refresh()
 end
 
 -- Panel map
-StatusMapPanel = {}
-StatusMapPanel.__index = StatusMapPanel
+StatusMapPanel = moz_core.obj.declare_class("StatusMapPanel", moz.app.Panel)
 
-function StatusMapPanel.new(app)
-    local super = moz.app.Panel.new("map", 13, 3, 39, 14)
-    local self = moz.utils.obj.new(StatusMapPanel, super)
+function StatusMapPanel:init(app)
+    StatusMapPanel.super.init(self, "map", 13, 3, 39, 14)
     self.app = app
     self.viewer = moz.map.MapViewer.new(39, 13)
-    return self
 end
 
 function StatusMapPanel:refresh()
@@ -309,14 +297,11 @@ end
 -- Turtle manual
 
 -- status map
-ManualStatusPanel = {}
-ManualStatusPanel.__index = ManualStatusPanel
+ManualStatusPanel = moz_core.obj.declare_class("ManualStatusPanel", moz.app.Panel)
 
-function ManualStatusPanel.new(app)
-    local super = moz.app.Panel.new("status", 13, 3, 39, 1)
-    local self = moz.utils.obj.new(ManualStatusPanel, super)
+function ManualStatusPanel:init(app)
+    ManualStatusPanel.super.init(self, "status", 13, 3, 39, 1)
     self.app = app
-    return self
 end
 
 function ManualStatusPanel:refresh()
@@ -325,15 +310,12 @@ function ManualStatusPanel:refresh()
 end
 
 -- Manual map
-ManualMapPanel = {}
-ManualMapPanel.__index = ManualMapPanel
+ManualMapPanel = moz_core.obj.declare_class("ManualMapPanel", moz.app.Panel)
 
-function ManualMapPanel.new(app)
-    local super = moz.app.Panel.new("map", 13, 4, 39, 13)
-    local self = moz.utils.obj.new(ManualMapPanel, super)
+function ManualMapPanel:init(app)
+    ManualMapPanel.super.init(self, "map", 13, 4, 39, 13)
     self.app = app
     self.viewer = moz.map.MapViewer.new(39, 13)
-    return self
 end
 
 function ManualMapPanel:refresh()
@@ -379,14 +361,11 @@ function ManualMapPanel:handle_key_event(key)
 end
 
 -- map legend
-ManualLegendPanel = {}
-ManualLegendPanel.__index = ManualLegendPanel
+ManualLegendPanel = moz_core.obj.declare_class("ManualLegendPanel", moz.app.Panel)
 
-function ManualLegendPanel.new(app)
-    local super = moz.app.Panel.new("legend", 1, 3, 11, 8)
-    local self = moz.utils.obj.new(ManualLegendPanel, super)
+function ManualLegendPanel:init(app)
+    ManualLegendPanel.super.init(self, "legend", 1, 3, 11, 8)
     self.app = app
-    return self
 end
 
 function ManualLegendPanel:refresh()
@@ -401,14 +380,11 @@ end
 
 -- Inventory panel
 
-InventoryPanel = {}
-InventoryPanel.__index = InventoryPanel
+InventoryPanel = moz_core.obj.declare_class("InventoryPanel", moz.app.Panel)
 
-function InventoryPanel.new(app)
-   local super = moz.app.Menu.new("inventory", 1, 3, 15, 15, "Inventory:")
-   local self = moz.utils.obj.new(InventoryPanel, super)
+function InventoryPanel:init(app)
+   InventoryPanel.super.init(self, "inventory", 1, 3, 15, 15, "Inventory:")
    self.app = app
-   return self
 end
 
 function InventoryPanel:refresh()
@@ -498,5 +474,4 @@ function InventoryPanel:handle_key_event(key)
     end
 end
 
-app = moz.app.App.new()
-app:init()
+app = Monitor.new()

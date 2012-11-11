@@ -2,14 +2,11 @@
 -- Turtle 
 ------------
 
-Turtle = {}
-Turtle.__index = Turtle
+Turtle = moz_core.obj.declare_class("Turtle")
 
-function Turtle.new(name, facing)
+function Turtle:init(name, facing)
     rednet.open("right")
     
-    local self = moz.utils.obj.new(Turtle)
-    -- turtle
     self.namespace = "moznet"
     self.continue = true
     self.name = name
@@ -28,7 +25,7 @@ function Turtle.new(name, facing)
     self.config_file = "moz_ttl"
     self.inventory = self:get_inventory()
     self.interval = 1/5
-    self.action_queue = moz.standard.LinkedList.new()
+    self.action_queue = moz.std.LinkedList.new()
     self.listen_timer = nil
     self.paused = false
 
@@ -44,8 +41,6 @@ function Turtle.new(name, facing)
 
     -- ui
     self.ui = TurtleUI.new(self)
-    
-    return self
 end
 
 function Turtle:stop()
@@ -215,7 +210,9 @@ function Turtle:status()
     status.inventory = self:get_inventory()
     status.coords = self.coords
     status.facing = self.facing
-    status.map = self.map
+    status.map = {}
+    status.map.nodes = self.map.nodes
+    status.map.waypoints = self.map.waypoints
     status.last_action = self.last_action
     status.last_action_result = self.last_action_result
     status.task = self.last_task
@@ -618,12 +615,10 @@ end
 -- ui
 ------------
 
-TurtleUI = {}
-TurtleUI.__index = TurtleUI
+TurtleUI = moz_core.obj.declare_class("TurtleUI", moz.app.App)
 
-function TurtleUI.new(turtle)
-    local super = moz.app.App.new()
-    local self = moz.utils.obj.new(TurtleUI, super)
+function TurtleUI:init(turtle)
+    TurtleUI.super.init(self)
 
     -- app
     self.turtle = turtle
@@ -700,8 +695,6 @@ function TurtleUI.new(turtle)
     self:add_screen(goto)
 
     self:home()
-    
-    return self
 end
 
 function TurtleUI:log(message)
@@ -765,14 +758,11 @@ end
 
 -- Header
 
-Header = {}
-Header.__index = Header
+Header = moz_core.obj.declare_class("Header", moz.app.Panel)
 
-function Header.new(app)
-    local super = moz.app.Panel.new("header", 1, 1, 39, 1)
-    local self = moz.utils.obj.new(Header, super)
+function Header:init(app)
+    Header.super.init(self, "header", 1, 1, 39, 1)
     self.app = app
-    return self
 end
 
 function Header:refresh()
@@ -782,18 +772,15 @@ function Header:refresh()
 end
 
 -- Home menu
-HomeMenu = {}
-HomeMenu.__index = HomeMenu
+HomeMenu = moz_core.obj.declare_class("HomeMenu", moz.app.Menu)
 
-function HomeMenu.new(app)
-    local super = moz.app.Menu.new("menu", 1, 3, 30, 9, "")
-    local self = moz.utils.obj.new(HomeMenu, super)
+function HomeMenu:init(app)
+    HomeMenu.super.init(self, "menu", 1, 3, 30, 9, "Action:")
     self.app = app
-    return self
+    self:render()
 end
 
 function HomeMenu:refresh()
-    self.title = "Action:"
     self.items = {}
     self:add_item("Control", "status")
     self:add_item("Map", "map")
@@ -804,15 +791,12 @@ end
 
 -- Status map
 
-StatusMap = {}
-StatusMap.__index = StatusMap
+StatusMap = moz_core.obj.declare_class("StatusMap", moz.app.Panel)
 
-function StatusMap.new(app)
-    local super = moz.app.Panel.new("map", 23, 3, 17, 9)
-    local self = moz.utils.obj.new(StatusMap, super)
+function StatusMap:init(app)
+    StatusMap.super.init(self, "map", 23, 3, 17, 9)
     self.app = app
     self.viewer = moz.map.MapViewer.new(17, 9)
-    return self
 end
 
 function StatusMap:refresh()
@@ -822,14 +806,11 @@ end
 
 -- Status panel
 
-StatusPanel = {}
-StatusPanel.__index = StatusPanel
+StatusPanel = moz_core.obj.declare_class("StatusPanel", moz.app.Panel)
 
-function StatusPanel.new(app)
-    local super = moz.app.Panel.new("panel", 1, 3, 21, 4)
-    local self = moz.utils.obj.new(StatusPanel, super)
+function StatusPanel:init(app)
+    StatusPanel.super.init(self, "panel", 1, 3, 21, 4)
     self.app = app
-    return self
 end
 
 function StatusPanel:refresh()
@@ -842,14 +823,11 @@ end
 
 -- Monitors panel
 
-MonitorsPanel = {}
-MonitorsPanel.__index = MonitorsPanel
+MonitorsPanel = moz_core.obj.declare_class("MonitorsPanel", moz.app.Panel)
 
-function MonitorsPanel.new(app)
-    local super = moz.app.Panel.new("panel", 1, 3, 21, 4)
-    local self = moz.utils.obj.new(MonitorsPanel, super)
+function MonitorsPanel:init(app)
+    MonitorsPanel.super.init(self, "panel", 1, 3, 21, 4)
     self.app = app
-    return self
 end
 
 function MonitorsPanel:refresh()
@@ -864,15 +842,12 @@ end
 
 -- Status menu
 
-StatusMenu = {}
-StatusMenu.__index = StatusMenu
+StatusMenu = moz_core.obj.declare_class("StatusMenu", moz.app.Menu)
 
-function StatusMenu.new(app)
-    local super = moz.app.Menu.new("menu", 1, 3, 21, 4, "")
-    local self = moz.utils.obj.new(StatusMenu, super)
+function StatusMenu:init(app)
+    StatusMenu.super.init(self, "menu", 1, 3, 21, 4, "")
     self.app = app
     self.title_margin = 1
-    return self
 end
 
 function StatusMenu:refresh()
@@ -896,15 +871,12 @@ end
 
 -- Monitors menu
 
-MonitorsMenu = {}
-MonitorsMenu.__index = MonitorsMenu
+MonitorsMenu = moz_core.obj.declare_class("MonitorsMenu", moz.app.Menu)
 
-function MonitorsMenu.new(app)
-    local super = moz.app.Menu.new("menu", 1, 9, 21, 4, "")
-    local self = moz.utils.obj.new(MonitorsMenu, super)
+function MonitorsMenu:init(app)
+    MonitorsMenu.super.init(self, "menu", 1, 9, 21, 4, "")
     self.app = app
     self.title_margin = 0
-    return self
 end
 
 function MonitorsMenu:refresh()
@@ -915,15 +887,12 @@ end
 
 -- Manual Map
 
-ManualMap = {}
-ManualMap.__index = ManualMap
+ManualMap = moz_core.obj.declare_class("ManualMap", moz.app.Panel)
 
-function ManualMap.new(app)
-    local super = moz.app.Panel.new("map", 1, 3, 39, 9)
-    local self = moz.utils.obj.new(ManualMap, super)
+function ManualMap:init(app)
+    ManualMap.super.init(self, "map", 1, 3, 39, 9)
     self.app = app
     self.viewer = moz.map.MapViewer.new(38, 8)
-    return self
 end
 
 function ManualMap:refresh()
@@ -970,15 +939,12 @@ end
 
 -- Map menu
 
-MapMenu = {}
-MapMenu.__index = MapMenu
+MapMenu = moz_core.obj.declare_class("MapMenu", moz.app.Menu)
 
-function MapMenu.new(app)
-    local super = moz.app.Menu.new("menu", 1, 3, 21, 4, "")
-    local self = moz.utils.obj.new(MapMenu, super)
+function MapMenu:init(app)
+    MapMenu.super.init(self, "menu", 1, 3, 21, 4, "")
     self.app = app
     self.title_margin = 1
-    return self
 end
 
 function MapMenu:refresh()
@@ -992,14 +958,11 @@ end
 
 -- Programs menu
 
-ProgramsMenu = {}
-ProgramsMenu.__index = ProgramsMenu
+ProgramsMenu = moz_core.obj.declare_class("ProgramsMenu", moz.app.Menu)
 
-function ProgramsMenu.new(app)
-    local super = moz.app.Menu.new("menu", 1, 3, 30, 14, "")
-    local self = moz.utils.obj.new(ProgramsMenu, super)
+function ProgramsMenu:init(app)
+    ProgramsMenu.super.init(self, "menu", 1, 3, 30, 14, "")
     self.app = app
-    return self
 end
 
 function ProgramsMenu:refresh()
@@ -1012,44 +975,14 @@ function ProgramsMenu:refresh()
     self:add_item("Back", "back")
 end
 
--- Goto menu
-GotoForm = {}
-GotoForm.__index = GotoForm
+Form = moz_core.obj.declare_class("Form", moz.app.Panel)
 
-function GotoForm.new(app)
-    local super = Form.new("menu", 1, 3, 30, 14, "")
-    local self = moz.utils.obj.new(GotoForm, super)
-    self.app = app
-
-    self.title = "Enter destination:"
-    self.fields = {}
-    self:add_field("x", "x:", self.app.turtle.coords.x)
-    self:add_field("y", "y:", self.app.turtle.coords.y)
-    self:add_field("z", "z:", self.app.turtle.coords.z)
-    self.actions = {}
-    self:add_action("Go", "run_goto", self)
-    self:add_action("Back", "back")
-    
-    return self
-end
-
-function GotoForm:refresh()
-end
-
-Form = {}
-Form.__index = Form
-
-function Form.new(name, x, y, width, height, title)
-   local super = moz.app.Panel.new(name, x, y, width, height)
-   local self = moz.utils.obj.new(Form, super)
-    
-    -- local attributes
+function Form:init(name, x, y, width, height, title)
+   Form.super.init(self, name, x, y, width, height)
     self.title = title
     self.fields = {}
     self.actions = {}
     self.title_margin = 1
-
-    return self
 end
 
 function Form:render()
@@ -1162,6 +1095,27 @@ function Form:clear_cursor()
     term.setCursorPos(oldX, oldY)
 end
 
+-- Goto menu
+GotoForm = {}
+GotoForm.__index = GotoForm
+
+GotoForm = moz_core.obj.declare_class("GotoForm", Form)
+
+function GotoForm:init(app)
+    GotoForm.super.init(self, "menu", 1, 3, 30, 14, "")
+    self.app = app
+    self.title = "Enter destination:"
+    self.fields = {}
+    self:add_field("x", "x:", self.app.turtle.coords.x)
+    self:add_field("y", "y:", self.app.turtle.coords.y)
+    self:add_field("z", "z:", self.app.turtle.coords.z)
+    self.actions = {}
+    self:add_action("Go", "run_goto", self)
+    self:add_action("Back", "back")
+end
+
+function GotoForm:refresh()
+end
 
 ------------
 -- init

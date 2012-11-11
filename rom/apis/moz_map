@@ -5,9 +5,7 @@
 --
 -------------------------------------------------------
 
-if moz_standard == nil then
-    os.loadAPI("/rom/apis/moz_standard")
-end
+os.loadAPI("/rom/apis/moz_std")
 
 -----
 -- class Map
@@ -94,7 +92,7 @@ function Map:get_path(node_start, node_end)
     local closedset = {}
     local came_from = {}
 
-    while not moz.moz.utils.tables.is_empty(openset) do
+    while not moz.utils.tables.is_empty(openset) do
 	local current = self:get_min_fcost(openset)
 	if current == node_end then
 	    local path = {}
@@ -102,18 +100,18 @@ function Map:get_path(node_start, node_end)
 	    return moz.utils.tables.reverse(path)
 	end
 
-	moz.moz.utils.tables.remove(openset, current)
+	moz.utils.tables.remove(openset, current)
 	closedset[#closedset + 1] = current
 	
 	for i, neighbor in ipairs(self:get_neighbors(current)) do
 	    if neighbor.state ~= MapNode.states.BLOCK then
-		if not moz.moz.utils.tables.has(closedset, neighbor) then
+		if not moz.utils.tables.has(closedset, neighbor) then
 		    local gcost = current.gcost + 1
-		    if not moz.moz.utils.tables.has(openset, neighbor) or  gcost <= neighbor.gcost then
+		    if not moz.utils.tables.has(openset, neighbor) or  gcost <= neighbor.gcost then
 			came_from[neighbor] = current
 			neighbor.gcost = gcost
 			neighbor.fcost = self:estimate_cost(neighbor, node_end)
-			if not moz.moz.utils.tables.has(openset, neighbor) then
+			if not moz.utils.tables.has(openset, neighbor) then
 			    openset[#openset + 1] = neighbor
 			end
 		    end
@@ -125,7 +123,7 @@ function Map:get_path(node_start, node_end)
 end
 
 function Map:estimate_cost(node, node_end)
-    local cost = node.gcost + (math.floor(moz.moz.utils.gps.get_distance(node, node_end))*2)
+    local cost = node.gcost + (math.floor(moz.utils.GPS.get_distance(node, node_end))*2)
     if node.state == MapNode.states.UNKNOWN then
 	cost = cost + 10
     end

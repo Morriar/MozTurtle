@@ -5,34 +5,25 @@
 --
 -------------------------------------------------------
 
-if moz_standard == nil then
-    os.loadAPI("/rom/apis/moz_standard")
-end
-
+os.loadAPI("/rom/apis/moz_std")
 -----
 -- class App
 -----
 
-App = {}
-App.__index = App
+App = moz_core.obj.declare_class("App")
 
-function App.new()
-    local app = moz.utils.obj.new(App)
-
-    -- attributes
-    app.continue = true
-    app.width = 0
-    app.height = 0
-    app.screens = {}
-    app.hotkeys = {}
-    app.hotkeys[14] = "back" -- backspace
-    app.hotkeys[16] = "quit" -- [Q]uit
-    app.namespace = "moznet"
-    app.current_screen = nil
-    app.back_screen = nil
-    app.rednet = {}
-
-    return app
+function App:init()
+    self.continue = true
+    self.width = 0
+    self.height = 0
+    self.screens = {}
+    self.hotkeys = {}
+    self.hotkeys[14] = "back" -- backspace
+    self.hotkeys[16] = "quit" -- [Q]uit
+    self.namespace = "moznet"
+    self.current_screen = nil
+    self.back_screen = nil
+    self.rednet = {}
 end
 
 function App:add_screen(screen)
@@ -127,23 +118,17 @@ end
 -- class Screen
 -----
 
-Screen = {}
-Screen.__index = Screen
+Screen = moz_core.obj.declare_class("Screen")
 
-function Screen.new(name)
-    local screen = moz.utils.obj.new(Screen)
-
-    -- attributes
-    screen.name = name
-    screen.width = nil
-    screen.height = nil
-    screen.panels = {}
-    screen.app = nil
-    screen.back_screen = nil
-    screen.stdfocus = nil
-    screen.current_panel = nil
-
-    return screen
+function Screen:init(name)
+    self.name = name
+    self.width = nil
+    self.height = nil
+    self.panels = {}
+    self.app = nil
+    self.back_screen = nil
+    self.stdfocus = nil
+    self.current_panel = nil
 end
 
 function Screen:clear()
@@ -152,7 +137,7 @@ function Screen:clear()
 end
 
 function Screen:render()
-    self.clear()
+    self:clear()
     for name, panel in pairs(self.panels) do
 	panel:render()
     end
@@ -166,7 +151,6 @@ function Screen:focus(panel_name)
 end
 
 function Screen:add_panel(panel)
-    print(panel.name)
     panel.screen = self
     self.panels[panel.name] = panel
 end
@@ -179,23 +163,17 @@ end
 -- class Panel
 -----
 
-Panel = {}
-Panel.__index = Panel
+Panel = moz_core.obj.declare_class("Panel")
 
-function Panel.new(name, x, y, width, height)
-    local panel = moz.utils.obj.new(Panel)
-
-    -- attributes
-    panel.name = name
-    panel.screen = nil
-    panel.x = x
-    panel.y = y
-    panel.width = width
-    panel.height = height
-    panel.lines = {}
-    panel.visible = true
-
-    return panel
+function Panel:init(name, x, y, width, height)
+    self.name = name
+    self.screen = nil
+    self.x = x
+    self.y = y
+    self.width = width
+    self.height = height
+    self.lines = {}
+    self.visible = true
 end
 
 function Panel:clear()
@@ -283,22 +261,16 @@ end
 -- 	super Panel
 -----
 
-Menu = {}
-Menu.__index = Menu
+Menu = moz_core.obj.declare_class("Menu", Panel)
 
-function Menu.new(name, x, y, width, height, title)
-   local super = Panel.new(name, x, y, width, height)
-   local menu = moz.utils.obj.new(Menu, super)
-    
-    -- local attributes
-    menu.title = title
-    menu.items = {}
-    menu.title_margin = 1
-
-    return menu
+function Menu:init(name, x, y, width, height, title)
+    Menu.super.init(self, name, x, y, width, height)
+    self.title = title
+    self.items = {}
+    self.title_margin = 1
 end
 
-function Menu:render(params)
+function Menu:render()
     if not self.visible then return end
     self:refresh()
     term.setCursorPos(self.x, self.y)
