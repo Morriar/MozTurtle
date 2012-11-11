@@ -8,6 +8,146 @@
 --print("loading std")
 os.loadAPI("/rom/apis/moz_core")
 
+-- Logger
+-- abstract base class
+Logger = moz_core.obj.declare_class("Logger")
+
+Logger.DEBUG = 1
+Logger.INFO = 2
+Logger.WARNING = 3
+Logger.ERROR = 4
+Logger.FATAL = 5
+
+Logger.levels = {"debug", "info", "warning", "error", "fatal"}
+
+function Logger:init(min_level)
+    if min_level == nil then
+	min_level = Logger.INFO
+    end
+    self.min_level = min_level
+end
+
+function Logger:debug(message)
+    self:log(Logger.DEBUG, message)
+end
+
+function Logger:info(message)
+    self:log(Logger.INFO, message)
+end
+
+function Logger:warning(message)
+    self:log(Logger.WARNING, message)
+end
+
+function Logger:error(message)
+    self:log(Logger.ERROR, message)
+end
+
+function Logger:fatal(message)
+    self:log(Logger.FATAL, message)
+end
+
+function Logger:log(level, message)
+    if level < self.min_level then return end
+    self:write("["..self.levels[level].."] " .. tostring(message))
+end
+
+function Logger:write(message)
+    error("Logger:write is abstract")
+end
+
+-- ConsoleLogger
+-- print log on console
+ConsoleLogger = moz_core.obj.declare_class("ConsoleLogger", Logger)
+
+function ConsoleLogger:write(message)
+    print(message)
+end
+
+-- FileLogger
+-- print log in file
+FileLogger = moz_core.obj.declare_class("FileLogger", Logger)
+
+function FileLogger:init(level, path)
+    FileLogger.super.init(self, level)
+    if path == nil then
+	error("FileLogger:init must specify path")
+    end
+    self.file = File.new(path)
+end
+
+function FileLogger:write(message)
+    local time = os.time()
+    time = textutils.formatTime(time, true)
+
+    self.file:append(time .. " " .. message .. "\n")
+end
+
+-- MultiLogger
+-- agregate loggers
+
+MultiLogger = moz_core.obj.declare_class("MultiLogger", Logger)
+
+function MultiLogger:init(loggers)
+    if loggers == nil then
+	loggers = {}
+    end
+    self.loggers = loggers
+end
+
+function MultiLogger:add_logger(logger)
+    self.loggers[#self.loggers + 1] = logger
+end
+
+function MultiLogger:log(level, message)
+    for i, logger in pairs(self.loggers) do
+	logger:log(level, message)
+    end
+end
+
+---
+-- File handling
+---
+
+-- File
+--
+File = moz_core.obj.declare_class("File")
+
+function File:init(path)
+    if path == nil then
+	error("File:init must specify path")
+    end
+    self.path = path
+end
+
+function File:exists()
+    return io.open(self.file, "r") ~= nil
+end
+
+function File:read()
+    if not self:exists() then
+	error("File:read File (".. self.path ..") not font.")
+	return
+    end
+
+    local ptr = io.open(self.path, "r")
+    local str = ptr:read("*a")
+    ptr:close()
+    return str
+end
+
+function File:write(str)
+    ptr = io.open(self.path, "w")
+    ptr:write(str)
+    ptr:close()
+end
+
+function File:append(str)
+    ptr = io.open(self.path, "a")
+    ptr:write(str)
+    ptr:close()
+end
+
 ---
 -- LinkedList
 -- a linked list

@@ -132,7 +132,14 @@ function Screen:init(name)
 end
 
 function Screen:clear()
-    term.clear()
+    term.setCursorPos(1, 1)
+    for line = 1, self.height do
+	for col = 1, self.width do
+	    term.write(" ")
+	end
+	x, y = term.getCursorPos()
+	term.setCursorPos(1, y + 1)
+    end
     term.setCursorPos(1, 1)
 end
 
@@ -208,7 +215,7 @@ function Panel:render()
     end
 end
 
--- set panel cotent as a array of lines
+-- refresh the panel
 function Panel:refresh()
 end
 
@@ -350,3 +357,20 @@ end
 -- 	super Panel
 -----
 
+-- PanelLogger
+-- log messages into pannel
+PanelLogger = moz_core.obj.declare_class("PanelLogger", moz_std.Logger)
+
+function PanelLogger:init(level, panel)
+    PanelLogger.super.init(self, level)
+    if panel == nil then
+	error("PanelLogger:init must specify panel")
+    end
+    self.panel = panel
+end
+
+function PanelLogger:write(message)
+    local x, y = term.getCursorPos()
+    self.panel:printl(message)
+    term.setCursorPos(x, y)
+end
