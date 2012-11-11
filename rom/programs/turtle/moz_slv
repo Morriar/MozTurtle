@@ -780,10 +780,6 @@ HomeMenu = moz_core.obj.declare_class("HomeMenu", moz.app.Menu)
 function HomeMenu:init(app)
     HomeMenu.super.init(self, "menu", 1, 3, 30, 9, "Action:")
     self.app = app
-end
-
-function HomeMenu:refresh()
-    self.items = {}
     self:add_item("Control", "status")
     self:add_item("Map", "map")
     self:add_item("Monitors", "monitors")
@@ -947,15 +943,14 @@ function MapMenu:init(app)
     MapMenu.super.init(self, "menu", 1, 3, 21, 4, "")
     self.app = app
     self.title_margin = 1
-end
-
-function MapMenu:refresh()
-    self.title = "Coords: ".. self.app.turtle.coords.x .. "," .. self.app.turtle.coords.y .. "," .. self.app.turtle.coords.z
-    self.items = {}
     self:add_item("Explore", "map_explore")
     self:add_item("Waypoints", "map_waypoints")
     self:add_item("Clear", "map_clear")
     self:add_item("Back", "back")
+end
+
+function MapMenu:refresh()
+    self.title = "Coords: ".. self.app.turtle.coords.x .. "," .. self.app.turtle.coords.y .. "," .. self.app.turtle.coords.z
 end
 
 -- Programs menu
@@ -963,19 +958,15 @@ end
 ProgramsMenu = moz_core.obj.declare_class("ProgramsMenu", moz.app.Menu)
 
 function ProgramsMenu:init(app)
-    ProgramsMenu.super.init(self, "menu", 1, 3, 30, 14, "")
+    ProgramsMenu.super.init(self, "menu", 1, 3, 30, 14, "Programs:")
     self.app = app
-end
-
-function ProgramsMenu:refresh()
-    self.title = "Programs:"
-    self.items = {}
     self:add_item("Go To", "goto")
     self:add_item("Harvester", "harvester")
     self:add_item("Lumber", "lumber")
     self:add_item("Miner", "miner")
     self:add_item("Back", "back")
 end
+
 
 Form = moz_core.obj.declare_class("Form", moz.app.Panel)
 
