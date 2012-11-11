@@ -1,0 +1,81 @@
+-------------------------------------------------------
+----- Moz core
+--
+--
+-------------------------------------------------------
+
+-----
+-- obj
+-- oo programing facilities
+-----
+
+obj = {}
+
+function obj.declare_class(name, ...)
+    local class = {}
+    class.__index = class
+
+    -- supers
+    class.supers = {}
+    if arg.n > 0 then
+        class.super = arg[1]
+        for i = 1, arg.n do
+            for j, super in pairs(arg[i].supers) do
+                class.supers[super.name] = super
+            end
+            class.supers[arg[i].name] = arg[i]
+        end
+    elseif name ~= "Object" then
+        class.supers[Object.name] = Object
+        class.super = Object
+    end
+
+    -- class atributes
+    class.name = name
+
+    -- inherit super metatable first
+    if name ~= "Object" then
+	for j, method in pairs(class.super) do
+	    if class[j] == nil then class[j] = method end
+	end
+    end
+
+    -- inherit ancestors metatable
+    --TODO linearize supers
+    for i, super in pairs(class.supers) do
+        for j, method in pairs(super) do
+            if class[j] == nil then class[j] = method end
+        end
+    end
+
+    -- define new()
+    class.new = function (...)
+        local instance = {}
+        instance.class = class
+        instance.objectid = tostring(instance)
+        setmetatable(instance, class)
+
+        instance:init(...)
+        return instance
+    end
+
+    return class
+end
+
+---
+-- Object
+-- root of class hierarchy
+---
+Object = obj.declare_class("Object")
+
+function Object:init()
+    print("init " .. self.class.name)
+end
+
+function Object:__tostring()
+    return "<class " .. self.class.name .. " " .. self.objectid .. ">"
+end
+
+function Object:to_s()
+    return self:__tostring()
+end

@@ -1,0 +1,146 @@
+-------------------------------------------------------
+----- Moz utils
+--
+-- Application creation
+--
+-------------------------------------------------------
+
+if gps == nil then
+    os.loadAPI("/rom/apis/gps")
+end
+
+--
+-- rednet
+--
+rdnet = {}
+
+-- serialize and send a message over rednet
+function rdnet.sendMessage(message)
+    rednet.send(message.target, textutils.serialize(message))
+end
+
+-- serialize and broadcast a message over rednet
+function rdnet.broadcastMessage(message)
+    rednet.broadcast(textutils.serialize(message))
+end
+
+--
+-- obj
+--
+obj = {}
+
+-- call a method on a receiver
+function obj.call(recv, method_name, params)
+    if getmetatable(recv)[method_name] ~= nil then
+	return getmetatable(recv)[method_name](recv, params)
+    else
+	print("ERROR: no method called '".. tostring(method_name) .."' in table.")
+	return nil
+    end
+end
+
+function obj.new(class, super)
+    if super ~= nil then
+	-- Inherit methods from superclasse
+	for i, j in pairs(getmetatable(super)) do
+	    if class[i] == nil then class[i] = j end
+	end
+    end
+    
+    local obj = {}
+    setmetatable(obj, class)
+
+    if super ~= nil then
+	-- Inherit attributes from Panel
+	for i, j in pairs(super) do
+	    if obj[i] == nil then obj[i] = j end
+	end
+    end
+    return obj
+end
+
+--
+-- gps
+--
+GPS = {}
+
+function GPS.getCoords()
+    x, y, z = gps.locate(1, false)
+    coords = {}
+    coords.x = x
+    coords.y = y
+    coords.z = z
+    return coords
+end
+
+function GPS.get_distance(a, b)
+    return math.sqrt( (b.x - a.x)^2 + (b.y - a.y)^2 + (b.z - a.z)^2 )
+end
+
+--
+-- files
+--
+files = {}
+
+function files.file_exists(file)
+    ptr = io.open(file, "r")
+    return ptr ~= nil
+end
+
+function files.read(file, str)
+    if not files.file_exists(file) then
+	print("Error: Map file not found.")
+	return
+    end
+
+    local ptr = io.open(file, "r")
+    local str = ptr:read("*a")
+    ptr:close()
+    return str
+end
+
+function files.write(file, str)
+    ptr = io.open(file, "w")
+    ptr:write(str)
+    ptr:close()
+end
+
+--
+-- tables
+--
+tables = {}
+
+function tables.remove(tbl, elem)
+    idx = nil
+    for i, e in ipairs(tbl) do
+	if e == elem then
+	    idx = i
+	end
+    end
+    table.remove(tbl, idx)
+end
+
+function tables.has(tbl, elem)
+    for i, e in ipairs(tbl) do
+	if e == elem then
+	    return true
+	end
+    end
+    return false
+end
+
+function tables.is_empty(tbl)
+    count = 0
+    for i, e in ipairs(tbl) do
+	count = count + 1
+    end
+    return count == 0
+end
+
+function tables.reverse(tbl)
+    reversed = {}
+    for idx = 0, #tbl - 1 do
+	reversed[#reversed + 1] = tbl[#tbl - idx]
+    end
+    return reversed
+end

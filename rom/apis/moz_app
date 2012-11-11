@@ -1,0 +1,380 @@
+-------------------------------------------------------
+----- Moz app
+--
+-- Application creation
+--
+-------------------------------------------------------
+
+if moz_standard == nil then
+    os.loadAPI("/rom/apis/moz_standard")
+end
+
+-----
+-- class App
+-----
+
+App = {}
+App.__index = App
+
+function App.new()
+    local app = moz.utils.obj.new(App)
+
+    -- attributes
+    app.continue = true
+    app.width = 0
+    app.height = 0
+    app.screens = {}
+    app.hotkeys = {}
+    app.hotkeys[14] = "back" -- backspace
+    app.hotkeys[16] = "quit" -- [Q]uit
+    app.namespace = "moznet"
+    app.current_screen = nil
+    app.back_screen = nil
+    app.rednet = {}
+
+    return app
+end
+
+function App:add_screen(screen)
+    screen.app = self
+    screen.width = self.width
+    screen.height = self.height
+    self.screens[screen.name] = screen
+end
+
+function App:display(screen_name)
+    self.back_screen = self.current_screen
+    self.current_screen = self.screens[screen_name]
+    self.current_screen:render()
+end
+
+function App:refresh()
+    self.current_screen:render()
+end
+
+function App:back()
+    if self.current_screen ~= nil and self.current_screen.back_screen ~= nil then
+	self:display(self.current_screen.back_screen)
+    end
+end
+
+function App:quit()
+    self.continue = false
+    self.currentScreen:clear()
+end
+
+---
+-- events
+---
+
+function App:listen()
+    while(self.continue) do
+	local event, p1, p2, p3 = os.pullEvent()
+	self:handle_event(event, p1, p2, p3)
+    end
+end
+
+-- handle event
+function App:handle_event(event, p1, p2, p3)
+    if self:event_handlers()[event] ~= nil then self:event_handlers()[event](p1, p2, p3) end
+end
+
+-- event handlers
+function App:event_handlers()
+    local handlers = {}
+
+    handlers["key"] = function(key)
+	self:handle_key_event(key)
+    end
+
+    handlers["rednet_message"] = function(sender, message, distance)
+	self:event_rednet_handler(sender, message, distance)
+    end
+
+    return handlers
+end
+
+-- handle key event
+function App:handle_key_event(key)
+    -- hotkeys
+    if self.hotkeys[key] ~= nil then
+	moz.utils.obj.call(self, self.hotkeys[key], {})
+    else
+	if self.current_screen ~= nil then
+	    self.current_screen:handle_key_event(key)
+	end
+    end
+end
+
+-- handle rednet event
+function App:event_rednet_handler(sender, serialized_message, distance)
+    message = textutils.unserialize(serialized_message)
+    if message == nil or message.namespace == nil or message.namespace ~= self.namespace then return end
+    message.sender = sender
+    message.distance = distance
+    moz.utils.obj.call(self, message.action, message)
+end
+
+-- rednet 
+
+function App:rednet_message()
+    message = {}
+    message.namespace = self.namespace
+    return message
+end
+
+-----
+-- class Screen
+-----
+
+Screen = {}
+Screen.__index = Screen
+
+function Screen.new(name)
+    local screen = moz.utils.obj.new(Screen)
+
+    -- attributes
+    screen.name = name
+    screen.width = nil
+    screen.height = nil
+    screen.panels = {}
+    screen.app = nil
+    screen.back_screen = nil
+    screen.stdfocus = nil
+    screen.current_panel = nil
+
+    return screen
+end
+
+function Screen:clear()
+    term.clear()
+    term.setCursorPos(1, 1)
+end
+
+function Screen:render()
+    self.clear()
+    for name, panel in pairs(self.panels) do
+	panel:render()
+    end
+    self:focus(self.stdfocus)
+end
+
+function Screen:focus(panel_name)
+    panel = self.panels[panel_name]
+    self.current_panel = panel
+    self.current_panel:focus()
+end
+
+function Screen:add_panel(panel)
+    print(panel.name)
+    panel.screen = self
+    self.panels[panel.name] = panel
+end
+
+function Screen:handle_key_event(key)
+    self.current_panel:handle_key_event(key)
+end
+
+-----
+-- class Panel
+-----
+
+Panel = {}
+Panel.__index = Panel
+
+function Panel.new(name, x, y, width, height)
+    local panel = moz.utils.obj.new(Panel)
+
+    -- attributes
+    panel.name = name
+    panel.screen = nil
+    panel.x = x
+    panel.y = y
+    panel.width = width
+    panel.height = height
+    panel.lines = {}
+    panel.visible = true
+
+    return panel
+end
+
+function Panel:clear()
+    term.setCursorPos(self.x, self.y)
+    for line = 1, self.height do
+	for col = 1, self.width do
+	    term.write(" ")
+	end
+	x, y = term.getCursorPos()
+	term.setCursorPos(self.x, y + 1)
+    end
+end
+
+function Panel:render()
+    if not self.visible then return end
+    self:refresh()
+    term.setCursorPos(self.x, self.y)
+    for line = 1, self.height do
+	for col = 1, self.width do
+	    if self.lines[line] ~= nil then
+		if #self.lines[line] >= col then
+		    term.write(self.lines[line]:sub(col, col))
+		else
+		    term.write(".")
+		end
+	    else
+		term.write(".")
+	    end
+	end
+	x, y = term.getCursorPos()
+	term.setCursorPos(self.x, y + 1)
+    end
+end
+
+-- set panel cotent as a array of lines
+function Panel:refresh()
+end
+
+-- add text line to panel
+function Panel:add_line(line)
+    if #self.lines >= self.height then
+	old = self.lines
+	self.lines = {}
+	for i = 2, #old do
+		self.lines[i - 1] = old[i]
+	end
+    end
+    self.lines[#self.lines + 1] = line
+end
+
+-- add text line to panel and refresh panel
+function Panel:printl(line)
+    self:add_line(line)
+    self:render()
+end
+
+function Panel:focus()
+    term.setCursorPos(self.x, self.y)
+    term.setCursorBlink(true)
+end
+
+function Panel:handle_key_event(key)
+    x, y = term.getCursorPos()
+
+    if key == 200 then -- uparrow
+	y = y - 1
+    elseif key == 208 then  -- downarrow
+	y = y + 1
+    elseif key == 203 then  -- leftarrow
+	x = x - 1
+    elseif key == 205 then  -- rightarrow
+	x = x + 1
+    end
+
+    if x < self.x then return end
+    if y < self.y then return end
+    if x > self.x + self.width - 1 then return end
+    if y > self.y + self.height - 1 then return end
+
+    term.setCursorPos(x, y)
+end
+
+-----
+-- class Menu
+-- 	super Panel
+-----
+
+Menu = {}
+Menu.__index = Menu
+
+function Menu.new(name, x, y, width, height, title)
+   local super = Panel.new(name, x, y, width, height)
+   local menu = moz.utils.obj.new(Menu, super)
+    
+    -- local attributes
+    menu.title = title
+    menu.items = {}
+    menu.title_margin = 1
+
+    return menu
+end
+
+function Menu:render(params)
+    if not self.visible then return end
+    self:refresh()
+    term.setCursorPos(self.x, self.y)
+    term.write(self.title)
+    term.setCursorPos(self.x, self.y + 1 + self.title_margin)
+    
+    for i, item in ipairs(self.items) do
+	x, y = term.getCursorPos()
+	term.setCursorPos(x + 3, y)
+	term.write(item.label)
+	term.setCursorPos(x, y + 1)
+    end
+end
+
+function Menu:add_item(label, action, params)
+    item = {}
+    item.label = label
+    item.action = action
+    item.params = params
+    self.items[#self.items + 1] = item
+end
+
+function Menu:focus()
+    term.setCursorBlink(false)
+    term.setCursorPos(self.x + 1, self.y + 1 + self.title_margin)
+    term.write(">")
+    term.setCursorPos(self.x + 1, self.y + 1 + self.title_margin)
+end
+
+function Menu:handle_key_event(key)
+    local ymin = self.y + 1 + self.title_margin
+    local ymax = ymin + #self.items
+
+    -- arrow up
+    if key == 200 then
+	x, y = term.getCursorPos()
+	y = y - 1
+	if y >= ymin then
+	    self:clear_cursor()
+	    term.setCursorPos(x, y)
+	    term.write(">")
+	    term.setCursorPos(x, y)
+	end
+    end
+    -- arrow down
+    if key == 208 then
+	x, y = term.getCursorPos()
+	y = y + 1
+	if y < ymax then
+	    self:clear_cursor()
+	    term.setCursorPos(x, y)
+	    term.write(">")
+	    term.setCursorPos(x, y)
+	end
+    end
+    -- enter
+    if key == 28 then
+	x, y = term.getCursorPos()
+	item = self.items[y - ymin + 1]
+	moz.utils.obj.call(self.screen.app, item.action, item.params)
+    end
+end
+
+function Menu:clear_cursor()
+    local ymin = self.y + 1 + self.title_margin
+    local ymax = ymin + #self.items
+    local oldX, oldY = term.getCursorPos()
+    for y = ymin, ymax do
+	term.setCursorPos(self.x + 1, y)
+	term.write(" ")
+    end
+    term.setCursorPos(oldX, oldY)
+end
+
+-----
+-- class Form
+-- 	super Panel
+-----
+

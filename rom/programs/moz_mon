@@ -6,24 +6,24 @@
 -- App
 ---
 
-function moz.App:init()
+function moz.app.App:init()
     rednet.open("top")
 
     -- monitor
     self.turtles = {}
     self.current_turtle = nil
     self.id = os.computerID()
-    self.coords = moz.utils.gps.getCoords()
+    self.coords = moz.utils.GPS.getCoords()
 
     -- app
     self.width = 45
     self.height = 15
-    self.header = moz.Panel.new("header", 1, 1, 51, 1)
+    self.header = moz.app.Panel.new("header", 1, 1, 51, 1)
     self.header:add_line("Turtle Control Center v0.3")
-    self.logpan = moz.Panel.new("log", 1, 20 - 2, 51, 2)
+    self.logpan = moz.app.Panel.new("log", 1, 20 - 2, 51, 2)
 
     -- home
-    home = moz.Screen.new("home")
+    home = moz.app.Screen.new("home")
     home:add_panel(self.header)
     home:add_panel(self.logpan)
     home:add_panel(HomeMenu.new(self))
@@ -31,7 +31,7 @@ function moz.App:init()
     self:add_screen(home)
 
     -- turtle menu
-    turtle_menu = moz.Screen.new("turtle_menu")
+    turtle_menu = moz.app.Screen.new("turtle_menu")
     turtle_menu:add_panel(self.header)
     turtle_menu:add_panel(self.logpan)
     turtle_menu:add_panel(TurtleMenu.new(self))
@@ -40,7 +40,7 @@ function moz.App:init()
     self:add_screen(turtle_menu)
 
     -- status
-    turtle_status = moz.Screen.new("turtle_info")
+    turtle_status = moz.app.Screen.new("turtle_info")
     turtle_status:add_panel(self.header)
     turtle_status:add_panel(self.logpan)
     turtle_status:add_panel(InfoPanel.new(self))
@@ -51,7 +51,7 @@ function moz.App:init()
     self:add_screen(turtle_status)
 
     -- manual
-    turtle_manual = moz.Screen.new("turtle_manual")
+    turtle_manual = moz.app.Screen.new("turtle_manual")
     turtle_manual:add_panel(self.header)
     turtle_manual:add_panel(self.logpan)
     turtle_manual:add_panel(ManualStatusPanel.new(self))
@@ -63,7 +63,7 @@ function moz.App:init()
     self:add_screen(turtle_manual)
 
     -- manual
-    turtle_inventory = moz.Screen.new("turtle_inventory")
+    turtle_inventory = moz.app.Screen.new("turtle_inventory")
     turtle_inventory:add_panel(self.header)
     turtle_inventory:add_panel(self.logpan)
     turtle_inventory:add_panel(InventoryPanel.new(self))
@@ -77,42 +77,42 @@ function moz.App:init()
     self:listen()
 end
 
-function moz.App:quit()
+function moz.app.App:quit()
     self.continue = false
     self.current_screen:clear()
     rednet.close("top")
 end
 
 -- go to home screen
-function moz.App:home()
+function moz.app.App:home()
     self:display("home")
 end
 
 -- go to turtle home screen
-function moz.App:turtle_menu(turtle)
+function moz.app.App:turtle_menu(turtle)
     self.current_turtle = turtle.id
     self:display("turtle_menu")
     
 end
 
 -- go to turtle status screen
-function moz.App:turtle_info()
+function moz.app.App:turtle_info()
     self:display("turtle_info")
 end
 
 -- go to turtle manual screen
-function moz.App:turtle_manual()
+function moz.app.App:turtle_manual()
     self:display("turtle_manual")
 end
 
 -- go to turtle inventory screen
-function moz.App:turtle_inventory()
+function moz.app.App:turtle_inventory()
     self:display("turtle_inventory")
 end
 
 -- app_utils
 
-function moz.App:log(message)
+function moz.app.App:log(message)
     x, y = term.getCursorPos()
     self.current_screen.panels["log"]:printl("[LOG]" .. message)
     term.setCursorPos(x, y)
@@ -120,17 +120,17 @@ end
 
 -- app actions
 
-function moz.App:announce()
+function moz.app.App:announce()
     message = self:rednet_message()
     message.method = "turtle_register"
-    moz.utils.rednet.broadcastMessage(message)
+    moz.utils.rdnet.broadcastMessage(message)
     self.turtles = {}
     self:log("Announce...")
 end
 
 -- turtle
 
-function moz.App:turtle_register(message)
+function moz.app.App:turtle_register(message)
     self.turtles[message.sender] = message.status
     self:log("New turtle registered: " .. message.sender)
 
@@ -140,7 +140,7 @@ function moz.App:turtle_register(message)
     response.monitor = {}
     response.monitor.id = self.id
     response.monitor.coords = self.coords
-    moz.utils.rednet.sendMessage(response)
+    moz.utils.rdnet.sendMessage(response)
 
     if self.current_screen.name == "home" then
 	self.current_screen.panels["menu"]:render()
@@ -148,16 +148,16 @@ function moz.App:turtle_register(message)
     end
 end
 
-function moz.App:turtle_action(turtle, action)
+function moz.app.App:turtle_action(turtle, action)
     message = self:rednet_message()
     message.target = turtle.id
     message.method = "action_request"
     message.move = action
-    moz.utils.rednet.sendMessage(message)
+    moz.utils.rdnet.sendMessage(message)
     self:log("Sent action '".. action .."' to turtle " .. turtle.id)
 end
 
-function moz.App:turtle_status(message)
+function moz.app.App:turtle_status(message)
     self.turtles[message.sender] = message.status
     self:log("Received status from turtle " .. message.sender)
 
@@ -187,7 +187,7 @@ HomeMenu = {}
 HomeMenu.__index = HomeMenu
 
 function HomeMenu.new(app)
-    local super = moz.Menu.new("menu", 1, 3, 30, 14, "Select turtle to control:")
+    local super = moz.app.Menu.new("menu", 1, 3, 30, 14, "Select turtle to control:")
     local self = moz.utils.obj.new(HomeMenu, super)
     self.app = app
     return self
@@ -211,7 +211,7 @@ TurtleMenu = {}
 TurtleMenu.__index = TurtleMenu
 
 function TurtleMenu.new(app)
-    local super = moz.Menu.new("menu", 1, 3, 30, 14, "Action to do:")
+    local super = moz.app.Menu.new("menu", 1, 3, 30, 14, "Action to do:")
     local self = moz.utils.obj.new(TurtleMenu, super)
     self.app = app
     return self
@@ -237,7 +237,7 @@ InfoPanel = {}
 InfoPanel.__index = InfoPanel
 
 function InfoPanel.new(app)
-    local super = moz.Panel.new("status", 1, 3, 11, 8)
+    local super = moz.app.Panel.new("status", 1, 3, 11, 8)
     local self = moz.utils.obj.new(InfoPanel, super)
     self.app = app
     return self
@@ -253,7 +253,7 @@ function InfoPanel:refresh()
     self:add_line("x: " .. turtle.coords.x)
     self:add_line("y: " .. turtle.coords.y)
     self:add_line("z: " .. turtle.coords.z)
-    self:add_line("d: " .. moz.utils.gps.get_distance(self.app.coords, turtle.coords))
+    self:add_line("d: " .. moz.utils.GPS.get_distance(self.app.coords, turtle.coords))
 end
 
 -- Panel mini inventory
@@ -261,7 +261,7 @@ MiniInventoryPanel = {}
 MiniInventoryPanel.__index = MiniInventoryPanel
 
 function MiniInventoryPanel.new(app)
-    local super = moz.Panel.new("inventory", 1, 12, 11, 5)
+    local super = moz.app.Panel.new("inventory", 1, 12, 11, 5)
     local self = moz.utils.obj.new(MiniInventoryPanel, super)
     self.app = app
     return self
@@ -290,10 +290,10 @@ StatusMapPanel = {}
 StatusMapPanel.__index = StatusMapPanel
 
 function StatusMapPanel.new(app)
-    local super = moz.Panel.new("map", 13, 3, 39, 14)
+    local super = moz.app.Panel.new("map", 13, 3, 39, 14)
     local self = moz.utils.obj.new(StatusMapPanel, super)
     self.app = app
-    self.viewer = moz.MapViewer.new(39, 13)
+    self.viewer = moz.map.MapViewer.new(39, 13)
     return self
 end
 
@@ -313,7 +313,7 @@ ManualStatusPanel = {}
 ManualStatusPanel.__index = ManualStatusPanel
 
 function ManualStatusPanel.new(app)
-    local super = moz.Panel.new("status", 13, 3, 39, 1)
+    local super = moz.app.Panel.new("status", 13, 3, 39, 1)
     local self = moz.utils.obj.new(ManualStatusPanel, super)
     self.app = app
     return self
@@ -329,10 +329,10 @@ ManualMapPanel = {}
 ManualMapPanel.__index = ManualMapPanel
 
 function ManualMapPanel.new(app)
-    local super = moz.Panel.new("map", 13, 4, 39, 13)
+    local super = moz.app.Panel.new("map", 13, 4, 39, 13)
     local self = moz.utils.obj.new(ManualMapPanel, super)
     self.app = app
-    self.viewer = moz.MapViewer.new(39, 13)
+    self.viewer = moz.map.MapViewer.new(39, 13)
     return self
 end
 
@@ -383,7 +383,7 @@ ManualLegendPanel = {}
 ManualLegendPanel.__index = ManualLegendPanel
 
 function ManualLegendPanel.new(app)
-    local super = moz.Panel.new("legend", 1, 3, 11, 8)
+    local super = moz.app.Panel.new("legend", 1, 3, 11, 8)
     local self = moz.utils.obj.new(ManualLegendPanel, super)
     self.app = app
     return self
@@ -395,7 +395,7 @@ function ManualLegendPanel:refresh()
     self:add_line(turtle.name .. " (" .. turtle.id .. ")")
     self:add_line("")
     for i, wp in pairs(turtle.map.waypoints) do
-	self:add_line(wp.id .. ": " .. math.floor(moz.utils.gps.get_distance(wp, turtle.coords)) .. "m")
+	self:add_line(wp.id .. ": " .. math.floor(moz.utils.GPS.get_distance(wp, turtle.coords)) .. "m")
     end
 end
 
@@ -405,7 +405,7 @@ InventoryPanel = {}
 InventoryPanel.__index = InventoryPanel
 
 function InventoryPanel.new(app)
-   local super = moz.Menu.new("inventory", 1, 3, 15, 15, "Inventory:")
+   local super = moz.app.Menu.new("inventory", 1, 3, 15, 15, "Inventory:")
    local self = moz.utils.obj.new(InventoryPanel, super)
    self.app = app
    return self
@@ -498,5 +498,5 @@ function InventoryPanel:handle_key_event(key)
     end
 end
 
-app = moz.App.new()
+app = moz.app.App.new()
 app:init()

@@ -1,0 +1,343 @@
+-------------------------------------------------------
+----- Moz map
+--
+-- Application creation
+--
+-------------------------------------------------------
+
+if moz_standard == nil then
+    os.loadAPI("/rom/apis/moz_standard")
+end
+
+-----
+-- class Map
+-- A 3D map with waypoints
+-----
+
+Map = {}
+Map.__index = Map
+
+function Map.new()
+    local map = moz.utils.obj.new(Map)
+    map.points = {}
+    map.nodes = {}
+    map.waypoints = {}
+    return map
+end
+
+function Map.new_from_file(file)
+    local map = Map.new()
+
+    local str = moz.utils.files.read(file)
+    local obj = textutils.unserialize(str)
+
+    map.nodes = {}
+    for y, ylst in pairs(obj.nodes) do
+	for z, zlst in pairs(ylst) do
+	    for x, node in pairs(zlst) do
+		map:set_node(MapNode.new(node.x, node.y, node.z, node.symbol, node.walkable))
+	    end
+	end
+    end
+    
+    map.waypoints = obj.waypoints
+    return map
+end
+
+function Map:set_node(node)
+    if self.nodes[node.y] == nil then
+	self.nodes[node.y] = {}
+    end
+    if self.nodes[node.y][node.z] == nil then
+	self.nodes[node.y][node.z] = {}
+    end
+    self.nodes[node.y][node.z][node.x] = node
+end
+
+function Map:get_node(x, y, z)
+    if self.nodes[y] == nil or self.nodes[y][z] == nil or self.nodes[y][z][x] == nil then
+	self:set_node(MapNode.new(x, y, z, "?", MapNode.states.UNKNOWN))
+	return self:get_node(x, y, z)
+    end
+    return self.nodes[y][z][x]
+end
+
+function Map:get_neighbors(node)
+    local neighbors = {}
+    neighbors[#neighbors + 1] = self:get_node(node.x - 1, node.y, node.z)
+    neighbors[#neighbors + 1] = self:get_node(node.x + 1, node.y, node.z)
+    neighbors[#neighbors + 1] = self:get_node(node.x, node.y, node.z - 1)
+    neighbors[#neighbors + 1] = self:get_node(node.x, node.y, node.z + 1)
+    neighbors[#neighbors + 1] = self:get_node(node.x, node.y - 1, node.z)
+    neighbors[#neighbors + 1] = self:get_node(node.x, node.y + 1, node.z)
+    return neighbors
+end
+
+function Map:set_waypoint(x, y, z, id)
+    local waypoint = {}
+    waypoint.x = x
+    waypoint.y = y
+    waypoint.z = z
+    waypoint.id = id
+    self.waypoints[id] = waypoint
+end
+
+function Map:save(file)
+    moz.utils.files.write(file, textutils.serialize(self))
+end
+
+-- A*
+function Map:get_path(node_start, node_end)
+    node_start.gcost = 0
+    node_start.fcost = self:estimate_cost(node_start, node_end)
+    local openset = {node_start}
+    local closedset = {}
+    local came_from = {}
+
+    while not moz.moz.utils.tables.is_empty(openset) do
+	local current = self:get_min_fcost(openset)
+	if current == node_end then
+	    local path = {}
+	    self:build_path(came_from, node_end, path)
+	    return moz.utils.tables.reverse(path)
+	end
+
+	moz.moz.utils.tables.remove(openset, current)
+	closedset[#closedset + 1] = current
+	
+	for i, neighbor in ipairs(self:get_neighbors(current)) do
+	    if neighbor.state ~= MapNode.states.BLOCK then
+		if not moz.moz.utils.tables.has(closedset, neighbor) then
+		    local gcost = current.gcost + 1
+		    if not moz.moz.utils.tables.has(openset, neighbor) or  gcost <= neighbor.gcost then
+			came_from[neighbor] = current
+			neighbor.gcost = gcost
+			neighbor.fcost = self:estimate_cost(neighbor, node_end)
+			if not moz.moz.utils.tables.has(openset, neighbor) then
+			    openset[#openset + 1] = neighbor
+			end
+		    end
+		end
+	    end
+	end
+    end
+    return nil
+end
+
+function Map:estimate_cost(node, node_end)
+    local cost = node.gcost + (math.floor(moz.moz.utils.gps.get_distance(node, node_end))*2)
+    if node.state == MapNode.states.UNKNOWN then
+	cost = cost + 10
+    end
+    return cost
+end
+
+function Map:build_path(came_from, node, path)
+    path[#path + 1] = node
+    if came_from[node] ~= nil then
+	return self:build_path(came_from, came_from[node], path)
+    else
+	return node
+    end
+end
+
+function Map:get_min_fcost(set)
+    local min = nil
+    for i, node in ipairs(set) do
+	if min == nil or node.fcost <= min.fcost then
+	    min = node
+	end
+    end
+    return min
+end
+
+--
+-- MapNode
+-- elementary element of a Map
+--
+
+MapNode = {}
+MapNode.__index = MapNode
+
+function MapNode.new(x, y, z, symbol, state)
+    local node = moz.utils.obj.new(MapNode)
+    node.x = x
+    node.y = y
+    node.z = z
+    node.symbol = symbol
+    node.state = state
+    return node
+end
+
+function MapNode:to_s()
+    return "(" .. self.x .. ", " .. self.y .. ", " .. self.z .. ")"
+end
+
+MapNode.states = {}
+MapNode.states.EMPTY = 0
+MapNode.states.UNKNOWN = 1
+MapNode.states.BLOCK = 2
+
+-----
+-- class MapViewer
+--
+-- display a view of a map z layer
+-----
+
+MapViewer = {}
+MapViewer.__index = MapViewer
+
+function MapViewer.new(width, height)
+    local self = moz.utils.obj.new(MapViewer)
+    self.width = width
+    self.height = height
+    return self
+end
+
+function MapViewer:to_lines(map, origX, origY, origZ)
+    local minX = origX - math.floor(self.width / 2)
+    local maxX = origX + math.floor(self.width / 2)
+    local minZ = origZ - math.floor(self.height / 2)
+    local maxZ = origZ + math.floor(self.height / 2)
+
+    local view = self:view(map, origX, origY, origZ)
+    local lines = {}
+    i = 1
+    for z = minZ, maxZ do
+	lines[i] = ""
+	for x = minX, maxX do
+	    lines[i] = lines[i] .. view[z][x]
+	end
+	i = i + 1
+    end
+    return lines
+end
+
+function MapViewer:view(map, origX, origY, origZ)
+
+    local minX = origX - math.floor(self.width / 2)
+    local maxX = origX + math.floor(self.width / 2)
+    local minZ = origZ - math.floor(self.height / 2)
+    local maxZ = origZ + math.floor(self.height / 2)
+
+    -- build view
+    local lines = self:grid(map, minZ, maxZ, minX, maxX, origX, origY, origZ)
+    local layer = map.nodes[origY]
+    
+    for z = minZ + 1, maxZ - 1 do
+	for x = minX + 1, maxX - 1 do
+	    if layer ~= nil and layer[z] ~= nil and layer[z][x] ~= nil then
+		lines[z][x] = layer[z][x].symbol
+	    else
+		lines[z][x] = " "
+	    end
+	end
+    end
+
+    for id, waypoint in pairs(map.waypoints) do
+	if waypoint.z >= minZ and waypoint.z <= maxZ then
+	    if waypoint.x >= minX and waypoint.x <= maxX then
+		lines[waypoint.z][waypoint.x] = string.sub(tostring(waypoint.id), 1, 1)
+	    end
+	end
+    end
+    return lines
+end
+
+function MapViewer:grid(map, minZ, maxZ, minX, maxX, origX, origY, origZ)
+    local lines = {}
+    for z = minZ, maxZ do
+	lines[z] = {}
+	for x = minX, maxX do
+	    if z == minZ or z == maxZ then
+		if x == minX or x == maxX then
+		    lines[z][x] = "+"
+		elseif z == minZ and x == math.floor((minX + maxX) / 2) then
+		    lines[z][x] = "N"
+		elseif z == maxZ and x == math.floor((minX + maxX) / 2) then
+		    lines[z][x] = "S"
+		else
+		    lines[z][x] = "-"
+		end
+	    else
+		if x == minX or x == maxX then
+		    if x == minX and z == math.floor((minZ + maxZ) / 2) then
+			lines[z][x] = "W"
+		    elseif x == maxX and z == math.floor((minZ + maxZ) / 2) then
+			lines[z][x] = "E"
+		    else
+			lines[z][x] = "|"
+		    end
+		else
+		    lines[z][x] = " "
+		end
+	    end
+	end
+    end
+
+    -- add waypoints on edges
+    local edges = self:get_edges(minX, maxX, minZ, maxZ)
+    local a = {}
+    a.x = origX
+    a.z = origZ
+    local b = {}
+    for id, waypoint in pairs(map.waypoints) do
+	if waypoint.x < minX or waypoint.x > maxX or waypoint.z < minZ or waypoint.z > maxZ then
+	    b.x = waypoint.x
+	    b.z = waypoint.z
+	    for j, edge in pairs(edges) do
+		
+		local c = {}
+		local d = {}
+		c.x = edge[1]
+		c.z = edge[2]
+		d.x = edge[3]
+		d.z = edge[4]
+	    
+		local x, z = self:get_intersec(a, b, c, d)
+		if x ~= nil and z ~= nil then
+		    if lines[z] ~= nil then
+			lines[z][x] = waypoint.id
+		    end
+		end
+	    end
+	end
+    end
+    return lines
+end
+
+function MapViewer:get_legend(map, origX, origY, origZ)
+    local lines = {}
+    local orig = {}
+    orig.x = origX
+    orig.y = origY
+    orig.z = origZ
+    --lines[#lines + 1] = "orig x:" .. orig.x .. " y: " .. orig.y .. " z:" .. orig.z
+    for i, waypoint in pairs(map.waypoints) do
+	line = id .. " x:" .. waypoint.x .. " y:" .. waypoint.y .. " z:" .. waypoint.z .. " d:" .. moz.utils.gps.get_distance(orig, waypoint)
+	lines[#lines + 1] = line
+    end
+    return lines
+end
+
+function MapViewer:get_edges(minX, maxX, minZ, maxZ)
+    local edges = {}
+    edges.top = {minX, minZ, maxX, minZ}
+    edges.right = {maxX, minZ, maxX, maxZ}
+    edges.bottom = {minX, maxZ, maxX, maxZ}
+    edges.left = {minX, minZ, minX, maxZ}
+    return edges
+end
+
+function MapViewer:get_intersec(a, b, c, d)
+    local di = (a.x - b.x) * (c.z - d.z) - (a.z - b.z) * (c.x - d.x)
+    if di == 0 then return nil end
+    local xi = ((c.x - d.x) * (a.x * b.z - a.z * b.x) - (a.x - b.x) * (c.x * d.z - c.z * d.x)) / di
+    local zi = ((c.z - d.z) * (a.x * b.z - a.z * b.x) - (a.z - b.z) * (c.x * d.z - c.z * d.x)) / di
+    
+    if (xi < math.min(c.x, d.x) or xi > math.max(c.x, d.x)) then return nil end
+    if (xi < math.min(a.x, b.x) or xi > math.max(a.x, b.x)) then return nil end
+    if (zi < math.min(c.z, d.z) or zi > math.max(c.z, d.z)) then return nil end
+    if (zi < math.min(a.z, b.z) or zi > math.max(a.z, b.z)) then return nil end
+    return math.floor(xi), math.floor(zi)
+end

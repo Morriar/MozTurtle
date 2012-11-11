@@ -1,0 +1,174 @@
+-------------------------------------------------------
+----- Moz Standard
+--
+-- Tools & utils
+--
+-------------------------------------------------------
+
+--print("loading std")
+os.loadAPI("/rom/apis/moz_core")
+
+---
+-- LinkedList
+-- a linked list
+---
+
+LinkedList = {}
+LinkedList.__index = LinkedList
+
+function LinkedList.new()
+    local self = moz.utils.obj.new(LinkedList)
+    self.head = nil
+    self.tail = nil
+    return self
+end
+
+function LinkedList:is_empty()
+    return self.head == nil
+end
+
+function LinkedList:prepend(value)
+    local node = {}
+    node.value = value
+    node.prev = nil
+    node.next = self.head
+
+    self.head = node
+
+    if node.next ~= nil then
+	node.next.prev = node
+    end
+
+    if self.tail == nil then
+	self.tail = node
+    end
+end
+
+function LinkedList:prepend_all(values)
+    for k, v in pairs(values) do
+	self:prepend(v)
+    end
+end
+
+function LinkedList:insert_at(idx, value)
+    local node = {}
+    node.value = value
+    node.prev = nil
+
+    local next = self:get_node_at(idx)
+    if next ~= nil then
+	next.prev.next = node
+	node.prev = next.prev
+    
+	next.prev = node
+	node.next = next
+    end
+
+    if self.head == nil then
+	self.head = node
+    end
+    
+    if self.tail == nil then
+	self.tail = node
+    end
+end
+
+function LinkedList:append(value)
+    local node = {}
+    node.value = value
+    node.prev = self.tail
+    node.next = nil
+
+    self.tail = node
+
+    if node.prev ~= nil then
+	node.prev.next = node
+    end
+
+    if self.head == nil then
+	self.head = node
+    end
+end
+
+function LinkedList:append_all(values)
+    for k, v in pairs(values) do
+	self:append(v)
+    end
+end
+
+function LinkedList:get_node_at(index)
+    local idx = 0
+    local node = self.head
+    
+    while node ~= nil do
+	idx = idx + 1
+	if idx == index then
+	    return node
+	end
+	node = node.next
+    end
+    return nil
+end
+
+function LinkedList:get(index)
+    return self:get_node_at(index).value
+end
+
+function LinkedList:first()
+    if not self:is_empty() then
+	return self.head.value
+    end
+    return nil
+end
+
+function LinkedList:last()
+    if not self:is_empty() then
+	return self.tail.value
+    end
+    return nil
+end
+
+function LinkedList:pop_first()
+    if not self:is_empty() then
+	local first = self.head
+	local next = self.head.next
+	if next ~= nil then
+	    next.prev = nil
+	end
+	self.head = next
+	return first.value
+    end
+    return nil
+end
+
+function LinkedList:pop_last()
+    if not self:is_empty() then
+	local last = self.tail
+	local prev = last.prev
+	if prev ~= nil then
+	    prev.next = nil
+	else
+	    self.head = nil
+	end
+	self.tail = prev
+	return last.value
+    end
+    return nil
+end
+
+function LinkedList:clear()
+    self.head = nil
+    self.tail = nil
+end
+
+function LinkedList:as_array()
+    local items = {}
+
+    local node = self.head
+    while node ~= nil do
+	items[#items + 1] = node.value
+	node = node.next
+    end
+    return items
+end
+
